@@ -1,6 +1,11 @@
 # Created by https://www.toptal.com/developers/gitignore/api/node,macos
 # Edit at https://www.toptal.com/developers/gitignore?templates=node,macos
 
+# Changeset files (if using changesets for versioning)
+.changeset/d8-template.mdx
+!.changeset/config.json
+!.changeset/README.md
+
 ### macOS ###
 # General
 .DS_Store
