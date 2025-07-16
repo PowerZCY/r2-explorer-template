@@ -6,12 +6,13 @@ export default {
     
     console.log(`Request: ${request.method} ${url.pathname}`);
     
-    // 更精确的 API 路径匹配 - 只拦截我们自定义的 API，不影响 R2Explorer 内部的路径
-    if (url.pathname.startsWith('/api/v1/') || url.pathname === '/api/list' || url.pathname === '/api/upload') {
+    // 检查是否有 Bearer Token - 如果有，使用 Token 认证
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
       return handleAPIRequest(request, env, ctx);
     }
     
-    // Web 界面使用 Basic Auth（包括 R2Explorer 的内部 API 路径）
+    // Web 界面使用 Basic Auth（包括没有 Bearer Token 的请求）
     return R2Explorer({
       readonly: false,
       basicAuth: {
@@ -63,22 +64,63 @@ async function handleAPIRequest(request: Request, env: Env, ctx: ExecutionContex
     });
   }
   
-  // 处理实际的 R2 API 请求
-  const r2Response = await R2Explorer({
-    readonly: false,
-    // 为 API 请求跳过 Basic Auth
-  }).fetch(request, env as any, ctx);
-  
-  // 添加 CORS 头到响应
-  const response = new Response(r2Response.body, {
-    status: r2Response.status,
-    headers: {
-      ...Object.fromEntries(r2Response.headers),
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+  try {
+    // 处理实际的 R2 API 请求
+    const r2Response = await R2Explorer({
+      readonly: false,
+      // 为 API 请求跳过 Basic Auth
+    }).fetch(request, env as any, ctx);
+    
+    // 检查响应状态，如果是错误状态则处理
+    if (r2Response.status >= 400) {
+      const url = new URL(request.url);
+      const isFileRequest = url.pathname.includes('/api/buckets/') && !url.pathname.endsWith('/');
+      
+      if (r2Response.status === 404 || (isFileRequest && r2Response.status === 500)) {
+        return new Response(JSON.stringify({
+          error: 'File not found',
+          message: 'The requested file does not exist',
+          path: url.pathname,
+          status: 404
+        }), {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+          }
+        });
+      }
     }
-  });
-  
-  return response;
+    
+    // 添加 CORS 头到响应
+    const response = new Response(r2Response.body, {
+      status: r2Response.status,
+      headers: {
+        ...Object.fromEntries(r2Response.headers),
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      }
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('R2Explorer error:', error);
+    
+    // 其他错误返回通用的服务器错误
+    return new Response(JSON.stringify({
+      error: 'Internal Server Error',
+      message: 'An unexpected error occurred'
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      }
+    });
+  }
 }
