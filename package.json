@@ -28,6 +28,7 @@
   },
   "scripts": {
     "cf-typegen": "wrangler types",
+    "types": "npm run cf-typegen && echo '✅ Types updated! Custom env types are in ./types/env.d.ts'",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "deep-clean": "dev-scripts deep-clean",

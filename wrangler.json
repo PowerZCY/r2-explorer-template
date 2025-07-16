@@ -5,8 +5,7 @@
   "assets": {
     "directory": "node_modules/r2-explorer/dashboard",
     "binding": "ASSETS",
-    "html_handling": "auto-trailing-slash",
-    "not_found_handling": "single-page-application"
+    "html_handling": "auto-trailing-slash"
   },
   "r2_buckets": [
     {
