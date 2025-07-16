@@ -1,5 +1,7 @@
 {
   "name": "r2-explorer-template",
+  "version": "1.0.0",
+  "private": true,
   "description": "A Google Drive Interface for your Cloudflare R2 Buckets!",
   "cloudflare": {
     "label": "R2-Explorer App",
@@ -19,6 +21,7 @@
     "r2-explorer": "1.1.5"
   },
   "devDependencies": {
+    "@windrun-huaiin/dev-scripts": "^6.5.2",
     "@changesets/cli": "^2.29.5",
     "typescript": "5.8.3",
     "wrangler": "4.21.x"
@@ -26,7 +29,12 @@
   "scripts": {
     "cf-typegen": "wrangler types",
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "deep-clean": "dev-scripts deep-clean",
+    "d8": "pnpm run deep-clean",
+    "easy-changeset": "dev-scripts easy-changeset",
+    "dj": "pnpm run easy-changeset && pnpm changeset status",
+    "djv": "pnpm changeset version"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
