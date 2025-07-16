@@ -1,23 +1,38 @@
 # R2 存储服务 API 使用文档
 
-## 概述
+## 🔒 安全更新说明
 
-本文档说明如何通过 API 接口对 Cloudflare R2 存储服务进行文件操作。
+本服务使用**双重认证系统**提供安全保护：
 
-## 认证
+- **Web 界面访问**：使用 Basic Authentication（用户名/密码）
+- **API 接口访问**：使用 Bearer Token 认证（安全的API访问）
 
-所有 API 请求都需要基础认证（Basic Authentication）。
+## 🔑 认证方式
 
-### 认证方式
-使用 HTTP Basic Authentication，用户名和密码在部署时通过环境变量配置：
-- `ADMIN_USERNAME`: 管理员用户名
-- `ADMIN_PASSWORD`: 管理员密码
+### 1. Web 界面认证（Basic Auth）
+访问 Web 管理界面时使用：
+- 用户名：通过 `ADMIN_USERNAME` 环境变量配置
+- 密码：通过 `ADMIN_PASSWORD` 环境变量配置
 
-### 认证示例
+### 2. API 接口认证（Bearer Token）
+所有 `/api/*` 路径的请求都需要使用 Bearer Token：
+
 ```bash
-# 使用 curl 带认证
-curl -u admin:your-password https://your-domain.workers.dev/api/files
+# 使用 Bearer Token 访问 API
+curl -H "Authorization: Bearer your-api-token" \
+     https://your-domain.workers.dev/api/files
 ```
+
+#### 获取 API Token
+API Token 通过 `API_TOKEN` 环境变量配置。
+
+## 🌐 跨域访问说明
+
+API 支持跨域访问，允许任何域名的网站调用。如果您需要更严格的域名限制，建议：
+
+1. **使用 Cloudflare Access** 进行高级访问控制
+2. **在 R2 存储桶层面配置 CORS**（如果需要直接访问文件）
+3. **在应用层实现 IP 白名单**
 
 ## API 端点
 
@@ -25,18 +40,11 @@ curl -u admin:your-password https://your-domain.workers.dev/api/files
 
 **POST** `/api/upload`
 
-上传文件到 R2 存储桶。
-
-#### 请求
-- **Method**: POST
-- **Content-Type**: multipart/form-data
-- **Body**: 包含文件的表单数据
-
-#### 示例
+#### 请求示例
 ```bash
-# 上传文件
-curl -u admin:your-password \
-  -X POST \
+# 使用 Bearer Token 上传文件
+curl -X POST \
+  -H "Authorization: Bearer your-api-token" \
   -F "file=@/path/to/your/file.jpg" \
   https://your-domain.workers.dev/api/upload
 ```
@@ -49,32 +57,18 @@ formData.append('file', file);
 fetch('https://your-domain.workers.dev/api/upload', {
   method: 'POST',
   headers: {
-    'Authorization': 'Basic ' + btoa('admin:your-password')
+    'Authorization': 'Bearer your-api-token'
   },
   body: formData
 });
-```
-
-#### 响应
-```json
-{
-  "success": true,
-  "key": "uploaded-file.jpg",
-  "size": 1024,
-  "etag": "d41d8cd98f00b204e9800998ecf8427e"
-}
 ```
 
 ### 2. 文件下载
 
 **GET** `/api/files/{key}`
 
-下载指定的文件。
-
-#### 示例
 ```bash
-# 下载文件
-curl -u admin:your-password \
+curl -H "Authorization: Bearer your-api-token" \
   https://your-domain.workers.dev/api/files/my-file.jpg \
   --output downloaded-file.jpg
 ```
@@ -83,104 +77,36 @@ curl -u admin:your-password \
 
 **GET** `/api/files`
 
-获取存储桶中的文件列表。
-
-#### 查询参数
-- `prefix` (可选): 文件名前缀过滤
-- `limit` (可选): 返回结果数量限制，默认 100
-- `cursor` (可选): 分页游标
-
-#### 示例
 ```bash
-# 获取所有文件
-curl -u admin:your-password \
+curl -H "Authorization: Bearer your-api-token" \
   https://your-domain.workers.dev/api/files
-
-# 获取特定前缀的文件
-curl -u admin:your-password \
-  "https://your-domain.workers.dev/api/files?prefix=images/"
-```
-
-#### 响应
-```json
-{
-  "objects": [
-    {
-      "key": "file1.jpg",
-      "size": 1024,
-      "lastModified": "2024-01-01T00:00:00.000Z",
-      "etag": "d41d8cd98f00b204e9800998ecf8427e"
-    }
-  ],
-  "truncated": false,
-  "cursor": null
-}
 ```
 
 ### 4. 文件删除
 
 **DELETE** `/api/files/{key}`
 
-删除指定的文件。
-
-#### 示例
 ```bash
-# 删除文件
-curl -u admin:your-password \
-  -X DELETE \
-  https://your-domain.workers.dev/api/files/my-file.jpg
-```
-
-#### 响应
-```json
-{
-  "success": true,
-  "message": "File deleted successfully"
-}
-```
-
-### 5. 文件信息
-
-**HEAD** `/api/files/{key}`
-
-获取文件元数据信息（不下载文件内容）。
-
-#### 示例
-```bash
-# 获取文件信息
-curl -u admin:your-password \
-  -I \
+curl -X DELETE \
+  -H "Authorization: Bearer your-api-token" \
   https://your-domain.workers.dev/api/files/my-file.jpg
 ```
 
 ## 错误处理
 
-API 使用标准 HTTP 状态码：
+### 认证相关错误
 
-- `200` - 请求成功
-- `401` - 认证失败
-- `403` - 权限不足
-- `404` - 文件不存在
-- `413` - 文件过大
-- `500` - 服务器内部错误
-
-### 错误响应格式
-```json
-{
-  "error": true,
-  "message": "File not found",
-  "code": 404
-}
-```
+- `401 Unauthorized: Missing Bearer token` - 缺少 Authorization 头
+- `401 Unauthorized: Invalid token` - Token 无效
 
 ## SDK 示例
 
 ### JavaScript/TypeScript
 ```javascript
 class R2StorageClient {
-  constructor(baseUrl, username, password) {
+  constructor(baseUrl, apiToken) {
     this.baseUrl = baseUrl;
-    this.auth = btoa(`${username}:${password}`);
+    this.apiToken = apiToken;
   }
 
   async uploadFile(file) {
@@ -190,7 +116,7 @@ class R2StorageClient {
     const response = await fetch(`${this.baseUrl}/api/upload`, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${this.auth}`
+        'Authorization': `Bearer ${this.apiToken}`
       },
       body: formData
     });
@@ -204,7 +130,7 @@ class R2StorageClient {
 
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Basic ${this.auth}`
+        'Authorization': `Bearer ${this.apiToken}`
       }
     });
 
@@ -215,23 +141,18 @@ class R2StorageClient {
     const response = await fetch(`${this.baseUrl}/api/files/${encodeURIComponent(key)}`, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Basic ${this.auth}`
+        'Authorization': `Bearer ${this.apiToken}`
       }
     });
 
     return response.json();
-  }
-
-  getDownloadUrl(key) {
-    return `${this.baseUrl}/api/files/${encodeURIComponent(key)}`;
   }
 }
 
 // 使用示例
 const client = new R2StorageClient(
   'https://your-domain.workers.dev',
-  'admin',
-  'your-password'
+  'your-api-token'
 );
 
 // 上传文件
@@ -243,13 +164,11 @@ console.log('Upload result:', result);
 ### Python
 ```python
 import requests
-import base64
 
 class R2StorageClient:
-    def __init__(self, base_url, username, password):
+    def __init__(self, base_url, api_token):
         self.base_url = base_url
-        self.auth = base64.b64encode(f"{username}:{password}".encode()).decode()
-        self.headers = {"Authorization": f"Basic {self.auth}"}
+        self.headers = {"Authorization": f"Bearer {api_token}"}
 
     def upload_file(self, file_path):
         with open(file_path, 'rb') as f:
@@ -277,19 +196,10 @@ class R2StorageClient:
         )
         return response.json()
 
-    def download_file(self, key, local_path):
-        response = requests.get(
-            f"{self.base_url}/api/files/{key}",
-            headers=self.headers
-        )
-        with open(local_path, 'wb') as f:
-            f.write(response.content)
-
 # 使用示例
 client = R2StorageClient(
     "https://your-domain.workers.dev",
-    "admin",
-    "your-password"
+    "your-api-token"
 )
 
 # 上传文件
@@ -297,43 +207,58 @@ result = client.upload_file("./my-file.jpg")
 print("Upload result:", result)
 ```
 
-## 部署说明
+## 🔧 环境变量配置
 
-### 环境变量配置
-
-1. **开发环境**：在 `wrangler.json` 中配置
+### 开发环境
+在 `wrangler.json` 中配置：
 ```json
 {
   "vars": {
     "ADMIN_USERNAME": "admin",
-    "ADMIN_PASSWORD": "your-secure-password"
+    "ADMIN_PASSWORD": "your-secure-password",
+    "API_TOKEN": "sk-dev-1234567890abcdef"
   }
 }
 ```
 
-2. **生产环境**：使用 Wrangler 设置环境变量（更安全）
+### 生产环境（推荐）
+使用 Wrangler secrets：
 ```bash
-# 设置生产环境变量
+# 设置 Web 界面认证
 wrangler secret put ADMIN_USERNAME
 wrangler secret put ADMIN_PASSWORD
+
+# 设置 API Token（强烈推荐使用复杂的随机字符串）
+wrangler secret put API_TOKEN
 ```
 
-### 部署命令
-```bash
-# 部署到 Cloudflare Workers
-npm run deploy
-```
+## 🛡️ 安全建议
 
-## 安全建议
+1. **API Token 管理**
+   - 使用长度至少 32 位的随机字符串
+   - 定期轮换 API Token
+   - 不要在客户端代码中硬编码 Token
 
-1. **使用强密码**: 确保 `ADMIN_PASSWORD` 是强密码
-2. **使用 Secrets**: 生产环境中使用 `wrangler secret` 而不是 `vars`
-3. **HTTPS**: 始终使用 HTTPS 访问 API
-4. **IP 限制**: 考虑在 Cloudflare 控制台配置 IP 访问限制
-5. **定期轮换**: 定期更换认证凭据
+2. **HTTPS**
+   - 始终使用 HTTPS 访问 API
+   - 生产环境部署使用自定义域名
 
-## 限制说明
+3. **高级安全控制**
+   - 启用 Cloudflare Access 进行额外保护
+   - 配置 IP 访问限制
+   - 设置访问频率限制
 
-- 单个文件大小限制：100MB
-- 请求频率限制：根据 Cloudflare Workers 限制
-- 存储空间：根据您的 R2 计划限制 
+4. **监控和日志**
+   - 监控异常的 API 访问
+   - 记录认证失败的请求
+   - 定期审查访问日志
+
+## 🚀 升级说明
+
+如果您之前使用的是 Basic Auth API，请按以下步骤升级：
+
+1. **生成 API Token**：在环境变量中设置 `API_TOKEN`
+2. **更新客户端代码**：将 `Authorization: Basic xxx` 改为 `Authorization: Bearer your-api-token`
+3. **测试新配置**：确保所有 API 调用正常工作
+
+Web 界面访问保持不变，仍使用原来的用户名密码。 

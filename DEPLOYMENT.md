@@ -1,32 +1,41 @@
 # R2 存储服务部署说明
 
+## 🔒 重要安全更新
+
+本版本引入了**双重认证系统**，提升了安全性：
+
+- **Web 界面**：继续使用 Basic Authentication
+- **API 接口**：使用 Bearer Token 认证（替代明文密码）
+
 ## 部署步骤
 
 ### 1. 配置环境变量
 
 #### 开发环境
-在 `wrangler.json` 中已经配置了示例环境变量：
+在 `wrangler.json` 中配置必需的环境变量：
 ```json
 {
   "vars": {
     "ADMIN_USERNAME": "admin",
-    "ADMIN_PASSWORD": "your-secure-password"
+    "ADMIN_PASSWORD": "your-secure-password",
+    "API_TOKEN": "sk-dev-1234567890abcdef"
   }
 }
 ```
 
-**注意**：开发环境已验证可以使用以下凭据正常登录：
-- 用户名：`admin`
-- 密码：`your-secure-password`
-
-#### 生产环境（推荐）
+#### 生产环境（强烈推荐）
+使用 Wrangler secrets 安全地设置环境变量：
 ```bash
-# 使用 Wrangler 安全地设置环境变量
+# Web 界面认证
 wrangler secret put ADMIN_USERNAME
 # 输入: admin (或您选择的用户名)
 
 wrangler secret put ADMIN_PASSWORD  
-# 输入: 您的安全密码（不要使用开发环境密码）
+# 输入: 强密码（用于Web界面登录）
+
+# API Token（用于API调用认证）
+wrangler secret put API_TOKEN
+# 输入: 至少32位的随机字符串，如: sk-prod-abc123def456...
 ```
 
 ### 2. 部署到 Cloudflare Workers
@@ -44,74 +53,176 @@ npm run deploy
 
 ### 3. 测试部署
 
-部署完成后，您可以：
+#### Web 界面测试
+访问：https://your-domain.workers.dev
+使用凭据：
+- 开发环境：`admin` / `your-secure-password`
+- 生产环境：您设置的用户名和密码
 
-1. **访问 Web 界面**：https://your-domain.workers.dev
-2. **使用设置的用户名和密码登录**
-   - 开发环境：`admin` / `your-secure-password`
-   - 生产环境：您在 secrets 中设置的凭据
-3. **测试 API**：
-   ```bash
-   curl -u admin:your-password https://your-domain.workers.dev/api/files
-   ```
+#### API 接口测试
+```bash
+# 测试 API Token 认证
+curl -H "Authorization: Bearer your-api-token" \
+     https://your-domain.workers.dev/api/files
+```
 
 ### 4. 本地开发测试
 
-启动开发服务器：
 ```bash
+# 启动开发服务器
 npm run dev
-# 或者
+# 或
 wrangler dev
 ```
 
-然后访问 http://localhost:8787 并使用凭据：
-- 用户名：`admin`
-- 密码：`your-secure-password`
+- **Web 界面**：http://localhost:8787
+- **API 接口**：http://localhost:8787/api/files
 
-## 配置说明
+## 🔑 认证系统说明
 
-### R2 存储桶
-- 确保您已创建 R2 存储桶
-- 在 `wrangler.json` 中更新 `bucket_name` 为您的实际存储桶名称
+### 双重认证架构
+```
+┌─────────────────┐    ┌──────────────────┐
+│   Web 界面      │    │    API 接口      │
+│                 │    │                  │
+│ Basic Auth      │    │ Bearer Token     │
+│ 用户名/密码     │    │ API Token        │
+│                 │    │                  │
+│ 人工操作        │    │ 程序调用         │
+└─────────────────┘    └──────────────────┘
+```
 
-### 安全配置
-- ✅ 已配置基础认证保护
-- ✅ 生产环境务必使用强密码
-- ✅ 使用 Wrangler secrets 而不是 vars 存储生产密码
-- ✅ 定期轮换认证凭据
-- 考虑启用 Cloudflare Access 进行额外保护
+### 访问路径区分
+- `https://your-domain.workers.dev/` → Web 界面（Basic Auth）
+- `https://your-domain.workers.dev/api/*` → API 接口（Bearer Token）
 
-## 功能特性
+## 🌐 跨域访问处理
 
-✅ **已完成并验证的配置**：
-- ✅ 基础认证保护（已测试）
-- ✅ 文件上传/下载
-- ✅ 文件列表查看
-- ✅ 文件删除
-- ✅ Web 界面操作
-- ✅ RESTful API 接口
+### 为什么在 Worker 层处理 CORS？
 
-## 环境变量优先级
+```
+第三方网站 → 我们的Worker API → R2Explorer → R2存储桶
+           ↑
+         CORS检查发生在这里
+```
 
-1. **开发环境**：`wrangler.json` 中的 `vars`
-2. **生产环境**：`wrangler secret` 设置的密钥
+- 第三方应用的跨域请求是针对我们的 Worker 域名
+- 浏览器需要我们返回正确的 CORS 头
+- R2 存储桶的 CORS 策略不影响通过 Worker 的 API 调用
+
+### 当前策略
+- **API 层面**：允许所有域名跨域访问（通过 `Access-Control-Allow-Origin: *`）
+- **安全控制**：通过 API Token 认证实现访问控制
+
+### 高级安全控制（可选）
+如需更严格的访问控制，建议：
+1. **Cloudflare Access**：企业级身份验证
+2. **IP 白名单**：在 Cloudflare 控制台配置
+3. **自定义域名限制**：修改代码实现特定域名控制
+
+## 🛡️ 安全特性
+
+### ✅ 已实现的安全措施
+
+1. **API Token 认证**
+   - 替代明文密码传输
+   - 支持独立的 Token 轮换
+   - 长度和复杂度要求
+
+2. **认证分离**
+   - Web 界面和 API 使用不同认证
+   - 降低凭据泄露风险
+   - 便于权限管理
+
+3. **环境变量安全**
+   - 生产环境使用 Secrets
+   - 敏感信息不在代码中暴露
+
+### 🔒 安全建议
+
+1. **API Token 管理**
+   ```bash
+   # 生成强随机 Token（推荐）
+   openssl rand -hex 32
+   # 示例: sk-prod-a1b2c3d4e5f6...
+   ```
+
+2. **定期轮换**
+   - 每月更换 API Token
+   - 记录 Token 更换日期
+   - 监控异常访问
+
+3. **监控告警**
+   - 设置认证失败告警
+   - 监控异常 IP 访问
+   - 记录 API 使用情况
+
+## 📊 功能对比
+
+| 功能 | 旧版本 | 新版本 |
+|------|--------|--------|
+| Web 界面认证 | Basic Auth | ✅ Basic Auth |
+| API 认证 | ❌ Basic Auth（不安全） | ✅ Bearer Token |
+| 跨域访问 | ❌ 可能受限 | ✅ 完全支持 |
+| 密码传输 | ❌ 每次请求传输 | ✅ Token 一次验证 |
+| 认证分离 | ❌ 统一认证 | ✅ 分离认证 |
+
+## 🔧 故障排除
+
+### 认证问题
+- **Web 界面无法登录**：检查 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD`
+- **API 返回 401**：验证 `Authorization: Bearer token` 格式
+- **Token 无效**：检查 `API_TOKEN` 环境变量配置
+
+### 跨域问题
+- **浏览器阻止请求**：确认使用了正确的 API Token
+- **预检请求失败**：检查请求的 headers 和 methods
+- **控制台错误**：查看具体的错误信息
+
+### 环境变量问题
+```bash
+# 检查当前配置的 secrets
+wrangler secret list
+
+# 删除错误的 secret
+wrangler secret delete SECRET_NAME
+
+# 重新设置
+wrangler secret put SECRET_NAME
+```
+
+## 🚀 升级现有部署
+
+如果您已有运行中的 R2 存储服务，请按以下步骤升级：
+
+### 步骤 1：准备新配置
+```bash
+# 生成强随机 API Token
+API_TOKEN=$(openssl rand -hex 32)
+echo "Generated API Token: sk-prod-$API_TOKEN"
+```
+
+### 步骤 2：设置环境变量
+```bash
+wrangler secret put API_TOKEN
+```
+
+### 步骤 3：部署新代码
+```bash
+npm run deploy
+```
+
+### 步骤 4：更新客户端
+更新所有使用 API 的客户端代码，将认证方式从 Basic Auth 改为 Bearer Token。
+
+### 步骤 5：验证功能
+- 测试 Web 界面登录
+- 测试 API Token 认证
+- 验证跨域访问正常
 
 ## 注意事项
 
-1. **环境变量优先级**：生产环境使用 `wrangler secret`，开发环境使用 `vars`
-2. **文件大小限制**：单个文件最大 100MB
-3. **访问权限**：只有通过认证的用户才能访问和操作文件
-4. **开发测试**：当前配置已验证可以正常工作
-5. **密码安全**：生产环境请更换为强密码
-
-## 故障排除
-
-### 认证问题
-- 确保用户名和密码与配置的环境变量一致
-- 开发环境默认凭据：`admin` / `your-secure-password`
-- 清除浏览器缓存或使用隐私窗口重试
-
-### 部署问题
-- 检查 R2 存储桶是否正确创建和配置
-- 验证 `wrangler.json` 中的 bucket 绑定配置
-- 确保所有必需的环境变量都已设置 
+1. **向后兼容性**：Web 界面访问保持不变
+2. **API 破坏性变更**：API 认证方式已更改，需要更新客户端
+3. **跨域访问**：现在允许所有域名访问API，通过Token控制安全
+4. **简化架构**：专注于API认证，不在Worker层限制域名 
