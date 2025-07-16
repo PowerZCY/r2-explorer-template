@@ -4,12 +4,14 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     
-    // 如果是 API 路径，使用 Token 认证
-    if (url.pathname.startsWith('/api/')) {
+    console.log(`Request: ${request.method} ${url.pathname}`);
+    
+    // 更精确的 API 路径匹配 - 只拦截我们自定义的 API，不影响 R2Explorer 内部的路径
+    if (url.pathname.startsWith('/api/v1/') || url.pathname === '/api/list' || url.pathname === '/api/upload') {
       return handleAPIRequest(request, env, ctx);
     }
     
-    // Web 界面使用 Basic Auth
+    // Web 界面使用 Basic Auth（包括 R2Explorer 的内部 API 路径）
     return R2Explorer({
       readonly: false,
       basicAuth: {

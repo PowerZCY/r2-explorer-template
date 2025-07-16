@@ -15,11 +15,6 @@
       "preview_bucket_name": "r2-explorer-bucket"
     }
   ],
-  "vars": {
-    "ADMIN_USERNAME": "admin",
-    "ADMIN_PASSWORD": "admin",
-    "API_TOKEN": "sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F"
-  },
   "observability": {
     "enabled": true
   },

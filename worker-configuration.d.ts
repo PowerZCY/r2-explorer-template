@@ -3,9 +3,9 @@
 // Runtime types generated with workerd@1.20250617.0 2025-04-01 
 declare namespace Cloudflare {
 	interface Env {
-		ADMIN_USERNAME: "admin";
-		ADMIN_PASSWORD: "admin";
-		API_TOKEN: "sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F";
+		ADMIN_USERNAME?: string;
+		ADMIN_PASSWORD?: string;
+		API_TOKEN?: string;
 		bucket: R2Bucket;
 		ASSETS: Fetcher;
 	}
@@ -6642,7 +6642,7 @@ declare namespace Rpc {
     export type Stubable = RpcTargetBranded | ((...args: any[]) => any);
     // Types that can be passed over RPC
     // The reason for using a generic type here is to build a serializable subset of structured
-    //   cloneable composite types. This allows types defined with the "interface" keyword to pass the
+    //   cloneable composites. This allows types defined with the "interface" keyword to pass the
     //   serializable check as well. Otherwise, only types defined with the "type" keyword would pass.
     type Serializable<T> = 
     // Structured cloneables
