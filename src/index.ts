@@ -23,7 +23,7 @@ export default {
 async function handleAPIRequest(request: Request, env: Env, ctx: ExecutionContext) {
   // API Token 认证
   const authHeader = request.headers.get('Authorization');
-  const expectedToken = env.API_TOKEN || 'sk-dev-1234567890abcdef';
+  const expectedToken = env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F';
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return new Response('Unauthorized: Missing Bearer token', {

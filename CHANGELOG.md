@@ -1,5 +1,11 @@
 # r2-explorer-template
 
+## 1.0.2
+
+### Patch Changes
+
+- fix(auth): config PASSWORD and TOKEN auth, use env config
+
 ## 1.0.1
 
 ### Patch Changes
