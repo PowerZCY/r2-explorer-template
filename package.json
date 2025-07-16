@@ -18,7 +18,7 @@
     "publish": true
   },
   "dependencies": {
-    "r2-explorer": "1.1.5"
+    "r2-explorer": "1.1.7"
   },
   "devDependencies": {
     "@windrun-huaiin/dev-scripts": "^6.5.2",
