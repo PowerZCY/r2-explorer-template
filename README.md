@@ -1,169 +1,299 @@
-# R2-Explorer App
+# R2 Explorer Template
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/r2-explorer-template)
 
 ![R2 Explorer Template Preview](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/e3c4ab7e-43f2-49df-6317-437f4ae8ce00/public)
 
-<!-- dash-content-start -->
+A **Google Drive-like interface** for Cloudflare R2 storage with secure file sharing and comprehensive API access.
 
-R2-Explorer brings a familiar Google Drive-like interface to your Cloudflare R2 storage buckets, making file management simple and intuitive.
+## ✨ Features
 
-## Key Features
+### 🔒 **Dual Authentication System**
+- **Web Interface**: Basic Auth for human users
+- **API Access**: Bearer Token for applications
+- Secure file sharing with signed temporary URLs
 
-- **🔒 Security**
-  - Basic Authentication support
-  - Cloudflare Access integration
-  - Self-hosted on your Cloudflare account
+### 📁 **File Management**
+- Drag-and-drop uploads with auto-generated share links
+- Multi-part upload for large files
+- Folder creation and organization
+- In-browser preview (PDF, images, text, markdown, CSV)
+- Right-click context menu with advanced options
 
-- **📁 File Management**
-  - Drag-and-drop file upload
-  - Folder creation and organization
-  - Multi-part upload for large files
-  - Right-click context menu for advanced options
-  - HTTP/Custom metadata editing
+### 🔗 **Smart File Sharing**
+- **Protected API**: Requires Bearer token, full access control
+- **Signed URLs**: Temporary links with expiration and signature validation
+- **Public R2**: Optional CDN-accelerated public access
+- Separate preview and download URLs for all sharing methods
 
-- **👀 File Handling**
-  - In-browser file preview
-    - PDF documents
-    - Images
-    - Text files
-    - Markdown
-    - CSV
-    - Logpush files
-  - In-browser file editing
-  - Folder upload support
+### 📧 **Email Integration**
+- Process emails via Cloudflare Email Routing
+- View email attachments in the interface
 
-- **📧 Email Integration**
-  - Receive and process emails via Cloudflare Email Routing
-  - View email attachments directly in the interface
+## 🚀 Quick Start
 
-<!-- dash-content-end -->
-
-> [!IMPORTANT]
-> When using C3 to create this project, select "no" when it asks if you want to deploy. You need to follow this project's [setup steps](https://github.com/cloudflare/templates/tree/main/r2-explorer-template#setup-steps) before deploying.
-
-## Getting Started
-
-Outside of this repo, you can start a new project with this template using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
-
-```
+### 1. Create Project
+```bash
 npm create cloudflare@latest -- --template=cloudflare/templates/r2-explorer-template
+cd your-project-name
+npm install
 ```
 
-A live public deployment of this template is available at [https://demo.r2explorer.com](https://demo.r2explorer.com)
-
-## Setup Steps
-
-1. Install the project dependencies with a package manager of your choice:
-   ```bash
-   npm install
-   ```
-2. Create a [R2 Bucket](https://developers.cloudflare.com/r2/get-started/) with the name "r2-explorer-bucket":
-   ```bash
-   npx wrangler r2 bucket create r2-explorer-bucket
-   ```
-3. Deploy the project!
-   ```bash
-   npx wrangler deploy
-   ```
-
-## Next steps
-
-By default this template is **readonly**.
-
-in order for you to enable editing, just update the `readonly` flag in your `src/index.ts` file.
-
-Its highly recommended that you setup security first, [learn more here](https://r2explorer.com/getting-started/security/).
-
-
-# 自定义类型定义
-
-## 问题说明
-
-Cloudflare Workers 的类型生成存在一个两难问题：
-
-1. **在 `wrangler.json` 中定义环境变量**：
-   - ✅ `wrangler types` 会自动生成正确的类型
-   - ❌ 安全风险：明文暴露敏感信息
-   - ❌ 生产环境：会覆盖 Cloudflare Dashboard 中的配置
-
-2. **不在 `wrangler.json` 中定义环境变量**：
-   - ✅ 安全：敏感信息通过 Cloudflare Dashboard 配置
-   - ✅ 生产环境：Dashboard 配置生效
-   - ❌ `wrangler types` 不会生成环境变量类型定义
-
-## 解决方案
-
-我们采用**分离式类型定义**的方案：
-
-### 文件结构
-```
-├── worker-configuration.d.ts  # 自动生成（bucket, ASSETS 等）
-├── types/
-│   ├── env.d.ts               # 手动维护（环境变量）
-│   └── README.md              # 说明文档
-└── tsconfig.json              # 包含两个类型文件
+### 2. Setup R2 Bucket
+```bash
+npx wrangler r2 bucket create r2-explorer-bucket
 ```
 
-### 工作流程
+### 3. Configure Security (Required)
+Set up environment variables in [Cloudflare Dashboard](https://dash.cloudflare.com):
 
-1. **修改 `wrangler.json` 后运行**：
-   ```bash
-   npm run types
-   ```
+Go to **Workers & Pages** → Your Worker → **Settings** → **Variables & Secrets**:
 
-2. **添加新环境变量时**：
-   - 在 `types/env.d.ts` 中添加类型定义
-   - 在 Cloudflare Dashboard 中配置实际值
+| Variable | Type | Description | Example |
+|----------|------|-------------|---------|
+| `ADMIN_USERNAME` | Text | Web interface username | `admin` |
+| `ADMIN_PASSWORD` | **Secret** | Web interface password | `your-secure-password` |
+| `API_TOKEN` | **Secret** | API access token | `sk-prod-your-secure-token` |
 
-3. **类型合并**：
-   TypeScript 会自动合并两个文件中的 `Cloudflare.Env` 接口
+**⚠️ Important**: Use **Secret** type for passwords and tokens, never hardcode them in `wrangler.json`.
 
-## 当前环境变量
+### 4. Deploy
+```bash
+npx wrangler deploy
+```
 
-在 `types/env.d.ts` 中定义的环境变量：
+### 5. Enable File Operations
+Edit `src/index.ts` and change `readonly: false` to enable uploads, deletions, and modifications.
 
-- `ADMIN_USERNAME?: string` - 管理员用户名
-- `ADMIN_PASSWORD?: string` - 管理员密码  
-- `API_TOKEN?: string` - API 访问令牌
+## 🔑 API Usage
 
-## 使用方式
+### Authentication
+- **Web Interface**: Basic Auth with username/password
+- **API Calls**: `Authorization: Bearer YOUR_API_TOKEN`
 
-在代码中正常使用：
+### File Upload (Auto-generates Share Links)
+```bash
+curl -X PUT \
+     -H "Authorization: Bearer YOUR_API_TOKEN" \
+     -H "Content-Type: application/octet-stream" \
+     --data-binary @your-file.jpg \
+     https://your-worker.workers.dev/api/buckets/bucket/your-file.jpg
+```
 
-```typescript
-export default {
-  async fetch(request: Request, env: Env) {
-    const username = env.ADMIN_USERNAME || "admin";
-    const token = env.API_TOKEN || "default-token";
-    // TypeScript 会正确识别这些类型
+**Response includes share links:**
+```json
+{
+  "success": true,
+  "filename": "your-file.jpg",
+  "share_urls": {
+    "protected": {
+      "view": "https://your-worker.workers.dev/api/buckets/bucket/your-file.jpg",
+      "download": "https://your-worker.workers.dev/api/buckets/bucket/your-file.jpg?download=true"
+    },
+    "signed": {
+      "view": "https://your-worker.workers.dev/share/your-file.jpg?signature=...&expires=...",
+      "download": "https://your-worker.workers.dev/share/your-file.jpg?signature=...&expires=...&download=true",
+      "expires_at": "2024-01-01T12:00:00.000Z"
+    }
   }
 }
 ```
 
-## 维护说明
+### File Access Methods
 
-- **切勿**在 `wrangler.json` 中添加敏感环境变量
-- **新增环境变量时**请同时更新 `types/env.d.ts`
-- **生产部署前**确保在 Cloudflare Dashboard 中配置了所有必需的环境变量
+#### 1. Protected API (Requires Token)
+```bash
+# Preview file
+curl -H "Authorization: Bearer TOKEN" \
+     https://your-worker.workers.dev/api/buckets/bucket/file.jpg
 
-这样既保证了类型安全，又确保了生产环境的安全性！ 
+# Force download
+curl -H "Authorization: Bearer TOKEN" \
+     https://your-worker.workers.dev/api/buckets/bucket/file.jpg?download=true
+```
 
+#### 2. Signed Temporary URLs (Secure Sharing)
+```bash
+# Generate share links
+curl -X POST \
+     -H "Authorization: Bearer TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"filename": "file.jpg", "expires_in": 3600}' \
+     https://your-worker.workers.dev/api/share
+```
 
+**Access without authentication:**
+- Preview: `https://your-worker.workers.dev/share/file.jpg?signature=...&expires=...`
+- Download: `https://your-worker.workers.dev/share/file.jpg?signature=...&expires=...&download=true`
+
+#### 3. Public R2 Access (Optional CDN)
+Configure R2 custom domain for public files:
+1. Set up custom domain in Cloudflare Dashboard
+2. Add `R2_CUSTOM_DOMAIN` environment variable
+3. Enable public bucket access
+
+## 🏗️ Architecture
+
+### File Sharing Flow
+```
 ┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
-│   第三方应用    │───▶│ Worker API   │───▶│   R2 存储桶     │
-│                 │    │ (认证+代理)  │    │                 │
+│   Client App    │───▶│ Worker API   │───▶│   R2 Bucket     │
+│                 │    │ (Auth+Proxy) │    │                 │
 └─────────────────┘    └──────────────┘    └─────────────────┘
                               │                     ▲
                               │                     │
                               ▼                     │
                        ┌──────────────┐             │
-                       │ 分享链接生成 │             │
+                       │ Share Links  │             │
                        └──────────────┘             │
                               │                     │
                               ▼                     │
                        ┌──────────────────────────────┴─┐
-                       │    R2 自定义域名                │
+                       │    R2 Custom Domain            │
                        │ https://files.yourdomain.com   │
-                       │ (公开访问，CDN 加速)           │
+                       │ (Public, CDN-accelerated)      │
                        └────────────────────────────────┘
+```
+
+### Security Layers
+1. **Protected API**: Bearer token authentication, full logging
+2. **Signed URLs**: HMAC-SHA256 signatures, time-limited access  
+3. **Public R2**: Optional direct R2 access with CDN performance
+
+## 📚 Complete API Reference
+
+### File Operations
+```bash
+# List files
+curl -H "Authorization: Bearer TOKEN" \
+     https://your-worker.workers.dev/api/buckets/bucket/
+
+# Delete file
+curl -X DELETE \
+     -H "Authorization: Bearer TOKEN" \
+     https://your-worker.workers.dev/api/buckets/bucket/file.jpg
+```
+
+### JavaScript Integration
+```javascript
+const API_TOKEN = 'your-api-token';
+const API_BASE = 'https://your-worker.workers.dev';
+
+// Upload file and get share links automatically
+async function uploadFile(file, filename) {
+  const response = await fetch(`${API_BASE}/api/buckets/bucket/${filename}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${API_TOKEN}`,
+      'Content-Type': file.type
+    },
+    body: file
+  });
+  
+  const result = await response.json();
+  return result.share_urls; // All sharing options included
+}
+
+// Use the share links
+const shareUrls = await uploadFile(file, 'document.pdf');
+console.log('Preview:', shareUrls.signed.view);
+console.log('Download:', shareUrls.signed.download);
+```
+
+## 🔧 Advanced Deployment
+
+### Using Wrangler CLI
+```bash
+# Set secrets securely
+wrangler secret put ADMIN_PASSWORD
+wrangler secret put API_TOKEN
+
+# Set public variables
+wrangler vars set ADMIN_USERNAME admin
+
+# Deploy
+wrangler deploy
+```
+
+### GitHub Actions
+Add secrets to your repository and use this workflow:
+
+```yaml
+name: Deploy
+on: [push]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - run: npm ci
+      - run: |
+          echo "${{ secrets.ADMIN_PASSWORD }}" | wrangler secret put ADMIN_PASSWORD
+          echo "${{ secrets.API_TOKEN }}" | wrangler secret put API_TOKEN
+          wrangler vars set ADMIN_USERNAME admin
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - run: wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+```
+
+## 🛡️ Security Best Practices
+
+### For Web Interface
+- Use strong passwords for admin accounts
+- Enable Cloudflare Access for additional protection
+- Monitor access logs regularly
+
+### For API Integration  
+- Rotate API tokens regularly
+- Use different tokens for different environments
+- Implement rate limiting in production
+- Monitor API usage and set up alerts
+
+### For File Sharing
+- **Sensitive files**: Use protected API with token authentication
+- **Temporary sharing**: Use signed URLs with appropriate expiration
+- **Public content**: Only use R2 public access for truly public files
+
+## 🎯 Use Cases
+
+### 1. Private Document Sharing
+Upload documents and generate time-limited share links for external users.
+
+### 2. API-First File Storage
+Integrate with your applications using the comprehensive REST API.
+
+### 3. Media Asset Management
+Store and serve images, videos with CDN acceleration via R2 public access.
+
+### 4. Backup and Archive
+Secure file storage with multiple access methods and granular permissions.
+
+## 🔍 Troubleshooting
+
+### Environment Variables Not Found
+- Check Cloudflare Dashboard → Workers → Settings → Variables & Secrets
+- Ensure secrets are marked as "Secret" type, not "Text"
+- Verify variable names match exactly
+
+### Authentication Failures
+- Confirm API token format (recommend `sk-` prefix)
+- Check Authorization header: `Bearer YOUR-TOKEN`
+- Verify token has not expired
+
+### File Access Issues  
+- Signed URLs: Check signature and expiration parameters
+- Protected API: Verify Bearer token in request headers
+- Public R2: Ensure bucket public access is enabled
+
+## 📖 Documentation
+
+- [Cloudflare R2 Documentation](https://developers.cloudflare.com/r2/)
+- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
+- [Live Demo](https://demo.r2explorer.com)
+
+---
+
+**Ready to use?** Deploy with one click or follow the quick start guide above!
