@@ -8,5 +8,8 @@ declare namespace Cloudflare {
     
     // API 访问令牌
     API_TOKEN?: string;
+    
+    // R2 自定义域名配置
+    R2_CUSTOM_DOMAIN?: string;
   }
 } 

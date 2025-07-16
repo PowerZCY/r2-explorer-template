@@ -6,6 +6,11 @@ export default {
     
     console.log(`Request: ${request.method} ${url.pathname}`);
     
+    // 处理公开文件访问路径 /public/*
+    if (url.pathname.startsWith('/public/')) {
+      return handlePublicFileAccess(request, env, ctx);
+    }
+    
     // 检查是否有 Bearer Token - 如果有，使用 Token 认证
     const authHeader = request.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -22,6 +27,65 @@ export default {
     }).fetch(request, env as any, ctx);
   }
 };
+
+async function handlePublicFileAccess(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url);
+  
+  // 提取文件名 /public/filename.ext -> filename.ext
+  const filename = url.pathname.replace('/public/', '');
+  
+  if (!filename) {
+    return new Response('Bad Request: No filename specified', {
+      status: 400,
+      headers: {
+        'Content-Type': 'text/plain',
+        'Access-Control-Allow-Origin': '*',
+      }
+    });
+  }
+  
+  try {
+    // 直接从 R2 获取文件
+    const object = await env.bucket.get(filename);
+    
+    if (!object) {
+      return new Response(JSON.stringify({
+        error: 'File not found',
+        message: 'The requested file does not exist',
+        filename
+      }), {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+    
+    // 返回文件内容
+    return new Response(object.body, {
+      status: 200,
+      headers: {
+        'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
+        'Content-Length': object.size.toString(),
+        'ETag': object.httpEtag,
+        'Last-Modified': object.uploaded.toUTCString(),
+        'Cache-Control': 'public, max-age=31536000', // 1年缓存
+        'Access-Control-Allow-Origin': '*',
+      }
+    });
+    
+  } catch (error) {
+    console.error('Public file access error:', error);
+    return new Response('Internal Server Error', {
+      status: 500,
+      headers: {
+        'Content-Type': 'text/plain',
+        'Access-Control-Allow-Origin': '*',
+      }
+    });
+  }
+}
 
 async function handleAPIRequest(request: Request, env: Env, ctx: ExecutionContext) {
   // API Token 认证
@@ -49,6 +113,13 @@ async function handleAPIRequest(request: Request, env: Env, ctx: ExecutionContex
         'Access-Control-Allow-Origin': '*',
       }
     });
+  }
+
+  const url = new URL(request.url);
+  
+  // 处理文件分享链接生成
+  if (url.pathname === '/api/share' && request.method === 'POST') {
+    return handleShareRequest(request, env);
   }
   
   // CORS 预检请求处理
@@ -120,6 +191,99 @@ async function handleAPIRequest(request: Request, env: Env, ctx: ExecutionContex
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      }
+    });
+  }
+}
+
+async function handleShareRequest(request: Request, env: Env): Promise<Response> {
+  try {
+    const body = await request.json() as { filename: string; public?: boolean };
+    const { filename, public: isPublic = false } = body;
+    
+    if (!filename) {
+      return new Response(JSON.stringify({
+        error: 'Bad Request',
+        message: 'filename is required'
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+    
+    // 检查文件是否存在
+    const object = await env.bucket.get(filename);
+    if (!object) {
+      return new Response(JSON.stringify({
+        error: 'File not found',
+        message: 'The specified file does not exist',
+        filename
+      }), {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+    
+    const workerDomain = new URL(request.url).origin;
+    
+    // 生成分享链接
+    const shareUrls = {
+      // 受保护的 Worker API 链接（需要 Bearer Token）
+      protected: `${workerDomain}/api/buckets/bucket/${encodeURIComponent(filename)}`,
+      
+      // 公开访问链接
+      public: env.R2_CUSTOM_DOMAIN 
+        ? `https://${env.R2_CUSTOM_DOMAIN}/${encodeURIComponent(filename)}`
+        : isPublic 
+          ? `${workerDomain}/public/${encodeURIComponent(filename)}`
+          : null,
+      
+      // 文件信息
+      file: {
+        name: filename,
+        size: object.size,
+        lastModified: object.uploaded.toISOString(),
+        contentType: object.httpMetadata?.contentType || 'application/octet-stream'
+      }
+    };
+    
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Share URLs generated successfully',
+      data: shareUrls,
+      usage: {
+        protected: '需要在请求头中包含 Authorization: Bearer YOUR_TOKEN',
+        public: env.R2_CUSTOM_DOMAIN 
+          ? '可直接访问，无需认证（R2 自定义域名）'
+          : isPublic
+            ? '可直接访问，无需认证（Worker 公开路径）'
+            : '需要先配置 R2 自定义域名或设置 public: true'
+      }
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      }
+    });
+    
+  } catch (error) {
+    return new Response(JSON.stringify({
+      error: 'Internal Server Error',
+      message: 'Failed to generate share URLs'
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
       }
     });
   }
