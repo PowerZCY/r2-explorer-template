@@ -15,6 +15,9 @@ importers:
       '@changesets/cli':
         specifier: ^2.29.5
         version: 2.29.5
+      '@windrun-huaiin/dev-scripts':
+        specifier: ^6.5.2
+        version: 6.5.2(typescript@5.8.3)
       typescript:
         specifier: 5.8.3
         version: 5.8.3
@@ -433,6 +436,12 @@ packages:
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
 
+  '@windrun-huaiin/dev-scripts@6.5.2':
+    resolution: {integrity: sha512-BLJIrrcTsNwA1b8Jk0c7XF+wbcwmqoplCxSRdPopDCf8+BGp4cnnpMy4KEFI6ziBIbOk2QBKt7OfleAH+4jLLw==}
+    hasBin: true
+    peerDependencies:
+      typescript: '>=4.0.0'
+
   acorn-walk@8.3.2:
     resolution: {integrity: sha512-cjkyv4OtNCIeqhHrfS81QWXoCBPExR/J62oyEqepVw8WaQeSqpW2uhuLPh1m9eWhDuOo/jUXVTlifvesOWp/4A==}
     engines: {node: '>=0.4.0'}
@@ -498,6 +507,10 @@ packages:
   color@4.2.3:
     resolution: {integrity: sha512-1rXeuUUiGGrykh+CeBdu5Ie7OJwinCgQY0bc7GCRxy5xVHy+moaqkpL/jqQq0MtQOeYcrqEz4abc5f0KtU7W4A==}
     engines: {node: '>=12.5.0'}
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
 
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
@@ -1304,6 +1317,13 @@ snapshots:
 
   '@types/node@12.20.55': {}
 
+  '@windrun-huaiin/dev-scripts@6.5.2(typescript@5.8.3)':
+    dependencies:
+      commander: 12.1.0
+      fast-glob: 3.3.3
+      picocolors: 1.1.1
+      typescript: 5.8.3
+
   acorn-walk@8.3.2: {}
 
   acorn@8.14.0: {}
@@ -1361,6 +1381,8 @@ snapshots:
     dependencies:
       color-convert: 2.0.1
       color-string: 1.9.1
+
+  commander@12.1.0: {}
 
   cookie@0.7.2: {}
 
