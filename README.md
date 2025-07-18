@@ -54,6 +54,7 @@ Go to **Workers & Pages** → Your Worker → **Settings** → **Variables & Sec
 | `ADMIN_USERNAME` | Text | Web interface username | `admin` |
 | `ADMIN_PASSWORD` | **Secret** | Web interface password | `your-secure-password` |
 | `API_TOKEN` | **Secret** | API access token | `sk-prod-your-secure-token` |
+| `SHARE_LINK_EXPIRES_HOURS` | Text | Share link expiry time in hours | `24` (default), `72`, `168` |
 
 **⚠️ Important**: Use **Secret** type for passwords and tokens, never hardcode them in `wrangler.json`.
 
@@ -125,6 +126,15 @@ curl -X POST \
 **Access without authentication:**
 - Preview: `https://your-worker.workers.dev/share/file.jpg?signature=...&expires=...`
 - Download: `https://your-worker.workers.dev/share/file.jpg?signature=...&expires=...&download=true`
+
+**⏰ Share Link Expiry Configuration:**
+- **Default**: 24 hours
+- **Environment Variable**: `SHARE_LINK_EXPIRES_HOURS` (in hours)
+- **API Override**: Use `expires_in` parameter (in seconds) to override default
+- **Examples**: 
+  - `SHARE_LINK_EXPIRES_HOURS=72` for 3 days
+  - `SHARE_LINK_EXPIRES_HOURS=168` for 1 week
+  - API: `{"expires_in": 7200}` for 2 hours
 
 #### 3. Public R2 Access (Optional CDN)
 Configure R2 custom domain for public files:
@@ -210,6 +220,7 @@ wrangler secret put API_TOKEN
 
 # Set public variables
 wrangler vars set ADMIN_USERNAME admin
+wrangler vars set SHARE_LINK_EXPIRES_HOURS 48
 
 # Deploy
 wrangler deploy
@@ -232,6 +243,7 @@ jobs:
           echo "${{ secrets.ADMIN_PASSWORD }}" | wrangler secret put ADMIN_PASSWORD
           echo "${{ secrets.API_TOKEN }}" | wrangler secret put API_TOKEN
           wrangler vars set ADMIN_USERNAME admin
+          wrangler vars set SHARE_LINK_EXPIRES_HOURS 24
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       - run: wrangler deploy

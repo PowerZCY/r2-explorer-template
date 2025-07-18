@@ -11,5 +11,8 @@ declare namespace Cloudflare {
     
     // R2 自定义域名配置
     R2_CUSTOM_DOMAIN?: string;
+    
+    // 分享链接有效期配置（小时为单位，默认24小时）
+    SHARE_LINK_EXPIRES_HOURS?: string;
   }
 } 
