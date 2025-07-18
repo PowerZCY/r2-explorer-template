@@ -15,15 +15,6 @@ declare namespace Cloudflare {
     BUCKET_NEWSPAPER_API_TOKEN?: string;      // newspaper-assets桶的API令牌
     BUCKET_ASPECT_API_TOKEN?: string;         // aspect-assets桶的API令牌  
     
-    // 每个桶的独立自定义域名配置 (可选)
-    // 格式: BUCKET_{桶名称大写}_CUSTOM_DOMAIN
-    BUCKET_DEFAULT_CUSTOM_DOMAIN?: string;    // 默认桶的自定义域名
-    BUCKET_NEWSPAPER_CUSTOM_DOMAIN?: string;  // newspaper-assets桶的自定义域名
-    BUCKET_ASPECT_CUSTOM_DOMAIN?: string;     // aspect-assets桶的自定义域名
-    
-    // 全局R2自定义域名配置 (向后兼容，已弃用)
-    R2_CUSTOM_DOMAIN?: string;
-    
     // 分享链接有效期配置（小时为单位，默认24小时）
     SHARE_LINK_EXPIRES_HOURS?: string;
     

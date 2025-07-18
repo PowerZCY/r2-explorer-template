@@ -1,5 +1,15 @@
 # r2-explorer-template
 
+## 1.1.0
+
+### Minor Changes
+
+- feat(api): enhance README and update type definitions
+  - Added multi-bucket support details to README.
+  - Updated environment variable definitions in type files.
+  - Removed deprecated custom domain configurations from the codebase.
+  - Improved clarity in API response structures and documentation.
+
 ## 1.0.3
 
 ### Patch Changes

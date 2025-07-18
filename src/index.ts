@@ -11,7 +11,6 @@ interface BucketConfig {
   binding: keyof Env;        // R2Bucket绑定名称 
   bucketName: string;        // 存储桶名称
   apiToken?: string;         // 该桶的API访问令牌
-  customDomain?: string;     // 该桶的自定义域名 (可选)
   public?: boolean;         // 该桶是否公开
 }
 
@@ -25,7 +24,6 @@ function getBucketConfigs(env: Env): Record<string, BucketConfig> {
       binding: 'bucket',
       bucketName: 'r2-explorer-bucket',
       apiToken: env.BUCKET_DEFAULT_API_TOKEN || env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F',
-      customDomain: env.BUCKET_DEFAULT_CUSTOM_DOMAIN || env.R2_CUSTOM_DOMAIN, // 向后兼容
       public: true
     },
     
@@ -34,7 +32,6 @@ function getBucketConfigs(env: Env): Record<string, BucketConfig> {
       binding: 'bucket_newspaper',
       bucketName: 'newspaper-assets', 
       apiToken: env.BUCKET_NEWSPAPER_API_TOKEN,
-      customDomain: env.BUCKET_NEWSPAPER_CUSTOM_DOMAIN,
       public: false
     },
     
@@ -43,7 +40,6 @@ function getBucketConfigs(env: Env): Record<string, BucketConfig> {
       binding: 'bucket_aspect',
       bucketName: 'aspect-assets',
       apiToken: env.BUCKET_ASPECT_API_TOKEN,
-      customDomain: env.BUCKET_ASPECT_CUSTOM_DOMAIN,
       public: false
     }
   };
@@ -1056,7 +1052,7 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
       // 返回详细的上传信息
       return new Response(JSON.stringify({
         success: true,
-        message: 'File uploaded successfully with conflict prevention',
+        message: 'File uploaded successfully',
         file: {
           originalFilename: uploadResult.originalFilename,
           storedFilename: uploadResult.storedFilename,
@@ -1067,15 +1063,7 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
           etag: uploadResult.etag,
           conflictPrevented: uploadResult.conflictPrevented
         },
-        share_urls: shareData,
-        metadata: uploadResult.customMetadata,
-        upload_info: {
-          method: 'PUT',
-          originalUrl: url.href,
-          finalUrl: url.href.replace(uploadResult.originalFilename, uploadResult.storedFilename),
-          timestamp: Date.now(),
-          authType: 'bearer-api'
-        }
+        share_urls: shareData
       }), {
         status: 201,
         headers: {
@@ -1217,14 +1205,6 @@ async function generateShareUrls(filename: string, env: Env, request: Request, e
       expires_at: publicExpirationDate.toISOString(),
       expires_in_hours: Math.round(publicExpiresIn / 3600),
       is_long_term: bucketConfig?.public || false
-    },
-    
-    // 文件信息
-    file: {
-      name: filename,
-      size: object.size,
-      lastModified: object.uploaded.toISOString(),
-      contentType: object.httpMetadata?.contentType || 'application/octet-stream'
     }
   };
   
