@@ -1,6 +1,94 @@
 import { R2Explorer } from "r2-explorer";
 
 // ================================
+// 🪣 多桶配置管理
+// ================================
+
+/**
+ * 桶配置接口
+ */
+interface BucketConfig {
+  binding: keyof Env;        // R2Bucket绑定名称 
+  bucketName: string;        // 存储桶名称
+  apiToken?: string;         // 该桶的API访问令牌
+  customDomain?: string;     // 该桶的自定义域名 (可选)
+  public?: boolean;         // 该桶是否公开
+}
+
+/**
+ * 获取所有可用的桶配置
+ */
+function getBucketConfigs(env: Env): Record<string, BucketConfig> {
+  return {
+    // 默认桶 (向后兼容)
+    'bucket': {
+      binding: 'bucket',
+      bucketName: 'r2-explorer-bucket',
+      apiToken: env.BUCKET_DEFAULT_API_TOKEN || env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F',
+      customDomain: env.BUCKET_DEFAULT_CUSTOM_DOMAIN || env.R2_CUSTOM_DOMAIN, // 向后兼容
+      public: true
+    },
+    
+    // 新闻网站资源桶 - 使用绑定名称作为键名
+    'bucket_newspaper': {
+      binding: 'bucket_newspaper',
+      bucketName: 'newspaper-assets', 
+      apiToken: env.BUCKET_NEWSPAPER_API_TOKEN,
+      customDomain: env.BUCKET_NEWSPAPER_CUSTOM_DOMAIN,
+      public: false
+    },
+    
+    // Aspect网站资源桶 - 使用绑定名称作为键名
+    'bucket_aspect': {
+      binding: 'bucket_aspect',
+      bucketName: 'aspect-assets',
+      apiToken: env.BUCKET_ASPECT_API_TOKEN,
+      customDomain: env.BUCKET_ASPECT_CUSTOM_DOMAIN,
+      public: false
+    }
+  };
+}
+
+/**
+ * 从请求路径解析桶名称
+ * 支持路径格式: /api/buckets/{bucketName}/operation
+ */
+function parseBucketFromPath(pathname: string): string | null {
+  // 匹配 /api/buckets/{bucketName}/... 格式
+  const apiMatch = pathname.match(/^\/api\/buckets\/([^\/]+)/);
+  if (apiMatch) {
+    return apiMatch[1];
+  }
+  
+  // 对于向后兼容性，如果是 /api/buckets/bucket/... 格式，返回默认桶
+  if (pathname.startsWith('/api/buckets/bucket/')) {
+    return 'bucket';
+  }
+  
+  return null;
+}
+
+/**
+ * 根据桶名称获取桶配置
+ */
+function getBucketConfig(bucketName: string, env: Env): BucketConfig | null {
+  const configs = getBucketConfigs(env);
+  return configs[bucketName] || null;
+}
+
+/**
+ * 根据桶配置获取R2Bucket实例
+ */
+function getBucketInstance(config: BucketConfig, env: Env): R2Bucket | null {
+  const bucket = env[config.binding];
+  // 确保返回的是R2Bucket类型
+  if (bucket && typeof bucket === 'object' && 'get' in bucket && 'put' in bucket && 'delete' in bucket) {
+    return bucket as R2Bucket;
+  }
+  return null;
+}
+
+// ================================
 // ⏰ 配置助手函数
 // ================================
 
@@ -26,6 +114,28 @@ function getShareLinkExpiresIn(env: Env): number {
   return 86400; // 默认24小时
 }
 
+/**
+ * 获取公开链接的超长有效期（秒）
+ * 从环境变量 PUBLIC_LINK_EXPIRES_HOURS 读取配置（小时为单位）
+ * 默认365天（8760小时）
+ */
+function getPublicLinkExpiresIn(env: Env): number {
+  const hoursFromEnv = env.PUBLIC_LINK_EXPIRES_HOURS;
+  
+  if (hoursFromEnv) {
+    const hours = parseInt(hoursFromEnv);
+    if (!isNaN(hours) && hours > 0) {
+      console.log(`📅 Using configured public link expiry: ${hours} hours`);
+      return hours * 3600; // 转换为秒
+    } else {
+      console.log(`⚠️ Invalid PUBLIC_LINK_EXPIRES_HOURS value: ${hoursFromEnv}, using default 365 days`);
+    }
+  }
+  
+  console.log(`📅 Using default public link expiry: 365 days (8760 hours)`);
+  return 31536000; // 默认365天 = 365 * 24 * 3600秒
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -33,34 +143,116 @@ export default {
     console.log(`🌐 Incoming request: ${request.method} ${url.pathname}`);
     
     // ================================
-    // 🎯 API 路由 (优先级最高)
+    // 🪣 桶路径解析 (最高优先级)
     // ================================
     
-    // 🎯 自定义API端点 (需要Bearer Token)
-    const customAPIEndpoints = [
+    const bucketName = parseBucketFromPath(url.pathname);
+    let bucketConfig: BucketConfig | null = null;
+    let targetBucket: R2Bucket | null = null;
+    
+    if (bucketName) {
+      bucketConfig = getBucketConfig(bucketName, env);
+      if (bucketConfig) {
+        targetBucket = getBucketInstance(bucketConfig, env);
+        console.log(`🪣 Bucket resolved: ${bucketName} -> ${bucketConfig.bucketName} (binding: ${bucketConfig.binding})`);
+        
+        if (!targetBucket) {
+          console.error(`❌ Bucket instance not found for: ${bucketName}`);
+          return new Response(JSON.stringify({
+            error: 'Bucket Not Available',
+            message: `Bucket '${bucketName}' is not properly configured or bound`,
+            bucket: bucketName
+          }), {
+            status: 503,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            }
+          });
+        }
+      } else {
+        console.error(`❌ Unknown bucket: ${bucketName}`);
+        const configs = getBucketConfigs(env);
+        const availableBuckets = Object.keys(configs);
+        
+        return new Response(JSON.stringify({
+          error: 'Unknown Bucket',
+          message: `Bucket '${bucketName}' is not configured`,
+          bucket: bucketName,
+          available_buckets: availableBuckets,
+          hint: `Available buckets: ${availableBuckets.join(', ')}`
+        }), {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          }
+        });
+      }
+    }
+    
+    // ================================
+    // 🎯 API 路由 (针对特定桶)
+    // ================================
+    
+    if (bucketName && bucketConfig && targetBucket) {
+      // 🎯 自定义API端点 (需要该桶的Bearer Token)
+      const customAPIEndpoints = [
+        `/api/buckets/${bucketName}/share`,
+        `/api/buckets/${bucketName}/files`, 
+        `/api/buckets/${bucketName}/metadata`
+      ];
+      
+      // 🎯 文件上传API (需要该桶的Bearer Token)
+      if (request.method === 'PUT' && url.pathname.startsWith(`/api/buckets/${bucketName}/`)) {
+        console.log(`📤 API file upload detected for bucket ${bucketName}: ${url.pathname}`);
+        return handleAPIRoutes(request, env, ctx, bucketConfig, targetBucket);
+      }
+      
+      // 🎯 自定义API端点 (需要该桶的Bearer Token)
+      if (customAPIEndpoints.some(endpoint => url.pathname === endpoint)) {
+        console.log(`🔧 Custom API endpoint for bucket ${bucketName}: ${url.pathname}`);
+        return handleAPIRoutes(request, env, ctx, bucketConfig, targetBucket);
+      }
+      
+      // 🎯 文件下载API with download参数 (需要该桶的Bearer Token)
+      if (request.method === 'GET' && 
+          url.pathname.startsWith(`/api/buckets/${bucketName}/`) && 
+          url.searchParams.get('download') === 'true') {
+        console.log(`📥 API download request for bucket ${bucketName}: ${url.pathname}`);
+        return handleAPIRoutes(request, env, ctx, bucketConfig, targetBucket);
+      }
+    }
+    
+    // ================================
+    // 🎯 向后兼容的API路由 (使用默认桶)
+    // ================================
+    
+    // 向后兼容：处理不带桶名的API请求，使用默认桶
+    const legacyAPIEndpoints = [
       '/api/share',
       '/api/files', 
       '/api/metadata'
     ];
     
-    // 🎯 文件上传API (需要Bearer Token)
-    if (request.method === 'PUT' && url.pathname.startsWith('/api/buckets/')) {
-      console.log(`📤 API file upload detected: ${url.pathname}`);
-      return handleAPIRoutes(request, env, ctx);
+    // 向后兼容：文件上传API
+    if (request.method === 'PUT' && url.pathname.startsWith('/api/buckets/') && !bucketName) {
+      console.log(`📤 Legacy API file upload detected: ${url.pathname}`);
+      const defaultConfig = getBucketConfig('bucket', env);
+      const defaultBucket = defaultConfig ? getBucketInstance(defaultConfig, env) : null;
+      if (defaultConfig && defaultBucket) {
+        return handleAPIRoutes(request, env, ctx, defaultConfig, defaultBucket);
+      }
     }
     
-    // 🎯 自定义API端点 (需要Bearer Token)
-    if (customAPIEndpoints.some(endpoint => url.pathname === endpoint)) {
-      console.log(`🔧 Custom API endpoint: ${url.pathname}`);
-      return handleAPIRoutes(request, env, ctx);
-    }
-    
-    // 🎯 文件下载API with download参数 (需要Bearer Token)
-    if (request.method === 'GET' && 
-        url.pathname.startsWith('/api/buckets/') && 
-        url.searchParams.get('download') === 'true') {
-      console.log(`📥 API download request: ${url.pathname}`);
-      return handleAPIRoutes(request, env, ctx);
+    // 向后兼容：自定义API端点
+    if (legacyAPIEndpoints.some(endpoint => url.pathname === endpoint)) {
+      console.log(`🔧 Legacy API endpoint: ${url.pathname}`);
+      const defaultConfig = getBucketConfig('bucket', env);
+      const defaultBucket = defaultConfig ? getBucketInstance(defaultConfig, env) : null;
+      if (defaultConfig && defaultBucket) {
+        return handleAPIRoutes(request, env, ctx, defaultConfig, defaultBucket);
+      }
     }
     
     // 带签名的临时访问链接
@@ -116,6 +308,41 @@ async function handlePageFileUpload(request: Request, env: Env, ctx: ExecutionCo
       return authResult.response;
     }
     
+    // 🪣 桶选择逻辑 - 页面上传支持指定桶或使用默认桶
+    const url = new URL(request.url);
+    let bucketName: string | null = null;
+    let bucketConfig: BucketConfig | null = null;
+    let targetBucket: R2Bucket | null = null;
+    
+    // 尝试从URL路径解析桶名称 (比如 /api/buckets/{bucketName}/upload)
+    const bucketFromPath = parseBucketFromPath(url.pathname);
+    if (bucketFromPath) {
+      bucketName = bucketFromPath;
+      bucketConfig = getBucketConfig(bucketName, env);
+      if (bucketConfig) {
+        targetBucket = getBucketInstance(bucketConfig, env);
+        console.log(`🪣 Page upload to specific bucket: ${bucketName}`);
+      }
+    }
+    
+    // 如果没有指定桶或桶不可用，使用默认桶
+    if (!targetBucket) {
+      bucketName = 'bucket';
+      bucketConfig = getBucketConfig('bucket', env);
+      if (bucketConfig) {
+        targetBucket = getBucketInstance(bucketConfig, env);
+        console.log(`🪣 Page upload using default bucket: ${bucketName}`);
+      }
+    }
+    
+    // 如果还是没有可用的桶，返回错误
+    if (!targetBucket || !bucketConfig) {
+      return new Response('No bucket available for upload', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' }
+      });
+    }
+    
     if (request.method === 'POST') {
       // 📋 解析R2Explorer的POST上传请求
       console.log(`📋 Processing POST upload request...`);
@@ -149,7 +376,7 @@ async function handlePageFileUpload(request: Request, env: Env, ctx: ExecutionCo
           
           // 🔍 检查文件是否已存在（防覆盖逻辑）
           console.log(`🔍 Checking if file exists: ${originalFilename}`);
-          const existingObject = await env.bucket.get(originalFilename);
+          const existingObject = await targetBucket.get(originalFilename);
           
           if (existingObject) {
             console.log(`⚠️ File ${originalFilename} already exists! Applying conflict prevention...`);
@@ -181,7 +408,7 @@ async function handlePageFileUpload(request: Request, env: Env, ctx: ExecutionCo
             console.log(`⬆️ Uploading with conflict prevention...`);
             
             // 直接使用R2 API上传到新文件名
-            const uploadResult = await env.bucket.put(uniqueFilename, request.body, {
+            const uploadResult = await targetBucket.put(uniqueFilename, request.body, {
               httpMetadata: {
                 contentType: fileContentType,
               },
@@ -227,7 +454,7 @@ async function handlePageFileUpload(request: Request, env: Env, ctx: ExecutionCo
               userAgent: request.headers.get('User-Agent') || 'unknown'
             };
             
-            const uploadResult = await env.bucket.put(originalFilename, request.body, {
+            const uploadResult = await targetBucket.put(originalFilename, request.body, {
               httpMetadata: {
                 contentType: fileContentType,
               },
@@ -296,7 +523,7 @@ async function handlePageFileUpload(request: Request, env: Env, ctx: ExecutionCo
       const uploadResult = await processFileUpload(request, env, {
         authType: 'basic-page',
         uploadSource: 'web-interface'
-      });
+      }, targetBucket);
       
       if (uploadResult.success) {
         console.log(`✅ Page upload successful: ${uploadResult.originalFilename} → ${uploadResult.storedFilename}`);
@@ -410,7 +637,7 @@ interface UploadResult {
   status?: number;
 }
 
-async function processFileUpload(request: Request, env: Env, options: UploadOptions): Promise<UploadResult> {
+async function processFileUpload(request: Request, env: Env, options: UploadOptions, targetBucket?: R2Bucket): Promise<UploadResult> {
   try {
     const url = new URL(request.url);
     const originalFilename = url.pathname.split('/').pop();
@@ -433,8 +660,18 @@ async function processFileUpload(request: Request, env: Env, options: UploadOpti
       `${timestamp}-${randomId}.${extension}` : 
       `${timestamp}-${randomId}`;
 
+    // 使用传入的桶或默认桶
+    const bucket = targetBucket || env.bucket;
+    if (!bucket) {
+      return {
+        success: false,
+        error: 'No bucket available',
+        status: 503
+      };
+    }
+
     // 检查原始文件名是否已存在
-    const existingObject = await env.bucket.get(originalFilename);
+    const existingObject = await bucket.get(originalFilename);
     const finalFilename = existingObject ? uniqueFilename : originalFilename;
     const wasRenamed = finalFilename !== originalFilename;
     
@@ -469,7 +706,7 @@ async function processFileUpload(request: Request, env: Env, options: UploadOpti
     console.log(`⬆️ Starting upload with metadata:`, customMetadata);
 
     // 直接使用R2 API上传，包含元数据
-    const uploadResult = await env.bucket.put(finalFilename, request.body, {
+    const uploadResult = await bucket.put(finalFilename, request.body, {
       httpMetadata: {
         contentType: contentType,
       },
@@ -516,12 +753,12 @@ async function processFileUpload(request: Request, env: Env, options: UploadOpti
 // ================================
 // 🛠️ API 路由处理器
 // ================================
-async function handleAPIRoutes(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleAPIRoutes(request: Request, env: Env, ctx: ExecutionContext, bucketConfig: BucketConfig, targetBucket: R2Bucket): Promise<Response> {
   const url = new URL(request.url);
   console.log(`🔧 API Route: ${request.method} ${url.pathname}`);
   
   // 认证检查 (Bearer Token)
-  const authResult = authenticateAPIRequest(request, env);
+  const authResult = authenticateAPIRequest(request, env, bucketConfig.apiToken);
   if (!authResult.success) {
     return authResult.response;
   }
@@ -529,27 +766,27 @@ async function handleAPIRoutes(request: Request, env: Env, ctx: ExecutionContext
   // 🎯 文件上传处理 (PUT /api/buckets/...)
   if (request.method === 'PUT' && url.pathname.includes('/buckets/')) {
     console.log(`📤 File upload detected: ${url.pathname}`);
-    return handleFileUpload(request, env, ctx);
+    return handleFileUpload(request, env, ctx, bucketConfig, targetBucket);
   }
   
   // 🔗 分享链接生成 (POST /api/share)
   if (url.pathname === '/api/share' && request.method === 'POST') {
-    return handleShareRequest(request, env);
+    return handleShareRequest(request, env, bucketConfig);
   }
   
   // 📋 文件列表 (GET /api/files)
   if (url.pathname === '/api/files' && request.method === 'GET') {
-    return handleFileListRequest(request, env);
+    return handleFileListRequest(request, env, bucketConfig);
   }
   
   // 🔍 文件元数据 (POST /api/metadata)
   if (url.pathname === '/api/metadata' && request.method === 'POST') {
-    return handleMetadataRequest(request, env);
+    return handleMetadataRequest(request, env, bucketConfig);
   }
   
   // 📥 文件下载 (GET /api/buckets/...?download=true)
   if (request.method === 'GET' && url.pathname.includes('/buckets/') && url.searchParams.get('download') === 'true') {
-    return handleFileDownload(request, env, ctx);
+    return handleFileDownload(request, env, ctx, bucketConfig);
   }
   
   // CORS 预检请求
@@ -603,9 +840,8 @@ async function handleAPIRoutes(request: Request, env: Env, ctx: ExecutionContext
 // ================================
 // 🔐 API 认证检查
 // ================================
-function authenticateAPIRequest(request: Request, env: Env): { success: boolean; response?: Response } {
+function authenticateAPIRequest(request: Request, env: Env, expectedToken: string): { success: boolean; response?: Response } {
   const authHeader = request.headers.get('Authorization');
-  const expectedToken = env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F';
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return {
@@ -627,6 +863,7 @@ function authenticateAPIRequest(request: Request, env: Env): { success: boolean;
   }
   
   const token = authHeader.replace('Bearer ', '');
+  console.log(`🔍 API token: ${token}, expectedToken: ${expectedToken}`);
   if (token !== expectedToken) {
     return {
       success: false,
@@ -701,7 +938,21 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
   
   try {
     // 验证通过，从 R2 获取文件
-    const object = await env.bucket.get(filename);
+    // 对于签名链接，默认使用默认桶，也可以通过URL参数指定桶
+    let targetBucket = env.bucket;
+    const bucketParam = url.searchParams.get('bucket');
+    if (bucketParam) {
+      const bucketConfig = getBucketConfig(bucketParam, env);
+      if (bucketConfig) {
+        const bucket = getBucketInstance(bucketConfig, env);
+        if (bucket) {
+          targetBucket = bucket;
+          console.log(`🪣 Signed access using specified bucket: ${bucketParam}`);
+        }
+      }
+    }
+    
+    const object = await targetBucket.get(filename);
     
     if (!object) {
       return new Response(JSON.stringify({
@@ -770,9 +1021,9 @@ async function generateSignature(filename: string, expires: string, secret: stri
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContext, bucketConfig: BucketConfig, targetBucket: R2Bucket): Promise<Response> {
   try {
-    console.log(`🎯 Processing file upload request`);
+    console.log(`🎯 Processing file upload request for bucket ${bucketConfig.bucketName}`);
     
     const url = new URL(request.url);
     const originalFilename = url.pathname.split('/').pop();
@@ -796,11 +1047,11 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
     const uploadResult = await processFileUpload(request, env, {
       authType: 'bearer-api',
       uploadSource: 'api-interface'
-    });
+    }, targetBucket);
     
     if (uploadResult.success) {
       // 生成分享链接
-      const shareData = await generateShareUrls(uploadResult.storedFilename, env, request, getShareLinkExpiresIn(env));
+      const shareData = await generateShareUrls(uploadResult.storedFilename, env, request, getShareLinkExpiresIn(env), bucketConfig);
       
       // 返回详细的上传信息
       return new Response(JSON.stringify({
@@ -864,7 +1115,7 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
   }
 }
 
-async function handleFileDownload(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function handleFileDownload(request: Request, env: Env, ctx: ExecutionContext, bucketConfig: BucketConfig): Promise<Response> {
   try {
     // 先获取文件
     const r2Response = await R2Explorer({
@@ -915,27 +1166,57 @@ async function handleFileDownload(request: Request, env: Env, ctx: ExecutionCont
   }
 }
 
-async function generateShareUrls(filename: string, env: Env, request: Request, expires_in?: number): Promise<any> {
+async function generateShareUrls(filename: string, env: Env, request: Request, expires_in?: number, bucketConfig?: BucketConfig): Promise<any> {
   const workerDomain = new URL(request.url).origin;
   const defaultExpiresIn = getShareLinkExpiresIn(env);
   const actualExpiresIn = expires_in || defaultExpiresIn;
-  const expirationTime = Date.now() + (actualExpiresIn * 1000);
-  const expirationDate = new Date(expirationTime);
   
-  console.log(`🔗 Generating share URLs with expiry: ${actualExpiresIn} seconds (${actualExpiresIn / 3600} hours)`);
+  // 根据桶配置决定public链接的过期时间
+  let publicExpiresIn: number;
+  if (bucketConfig?.public) {
+    // 如果桶是公开的，使用超长过期时间
+    publicExpiresIn = getPublicLinkExpiresIn(env);
+    console.log(`🔗 Generating URLs for public bucket - public expiry: ${publicExpiresIn} seconds (${publicExpiresIn / 3600} hours)`);
+  } else {
+    // 如果桶不是公开的，使用正常过期时间
+    publicExpiresIn = actualExpiresIn;
+    console.log(`🔗 Generating URLs for private bucket - normal expiry: ${publicExpiresIn} seconds (${publicExpiresIn / 3600} hours)`);
+  }
+  
+  const publicExpirationTime = Date.now() + (publicExpiresIn * 1000);
+  const publicExpirationDate = new Date(publicExpirationTime);
   
   // 检查文件是否存在并获取信息
-  const object = await env.bucket.get(filename);
+  // 使用传入的桶配置或默认桶
+  const bucket = bucketConfig ? getBucketInstance(bucketConfig, env) || env.bucket : env.bucket;
+  const object = await bucket.get(filename);
   if (!object) {
     throw new Error('File not found');
   }
   
-  // 生成分享链接
+  // 生成签名用的token（根据桶配置使用对应的token）
+  const signingToken = bucketConfig?.apiToken || env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F';
+  const signature = await generateSignature(filename, publicExpirationTime.toString(), signingToken);
+  
+  // 确定桶名称用于URL参数（如果不是默认桶，需要在URL中指定）
+  const bucketKey = bucketConfig?.binding || 'bucket';
+  const bucketParam = bucketKey !== 'bucket' ? `&bucket=${bucketKey}` : '';
+  
+  // 生成分享链接 - 统一结构
   const shareUrls: any = {
     // 受保护的 Worker API 链接（需要 Bearer Token）
     protected: {
-      view: `${workerDomain}/api/buckets/bucket/${encodeURIComponent(filename)}`,
-      download: `${workerDomain}/api/buckets/bucket/${encodeURIComponent(filename)}?download=true`
+      view: `${workerDomain}/api/buckets/${bucketKey}/${encodeURIComponent(filename)}`,
+      download: `${workerDomain}/api/buckets/${bucketKey}/${encodeURIComponent(filename)}?download=true`
+    },
+    
+    // 公开访问链接（带签名的临时访问链接，包含桶参数）
+    public: {
+      view: `${workerDomain}/share/${encodeURIComponent(filename)}?signature=${signature}&expires=${publicExpirationTime}${bucketParam}`,
+      download: `${workerDomain}/share/${encodeURIComponent(filename)}?signature=${signature}&expires=${publicExpirationTime}&download=true${bucketParam}`,
+      expires_at: publicExpirationDate.toISOString(),
+      expires_in_hours: Math.round(publicExpiresIn / 3600),
+      is_long_term: bucketConfig?.public || false
     },
     
     // 文件信息
@@ -947,38 +1228,20 @@ async function generateShareUrls(filename: string, env: Env, request: Request, e
     }
   };
   
-  // 根据配置决定公开访问方式
-  if (env.R2_CUSTOM_DOMAIN) {
-    // 如果配置了 R2 自定义域名，提供公开链接选项
-    shareUrls.public = {
-      view: `https://${env.R2_CUSTOM_DOMAIN}/${encodeURIComponent(filename)}`
-    };
-  } else {
-    // 生成带签名的临时访问链接
-    const signature = await generateSignature(filename, expirationTime.toString(), env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F');
-    shareUrls.signed = {
-      view: `${workerDomain}/share/${encodeURIComponent(filename)}?signature=${signature}&expires=${expirationTime}`,
-      download: `${workerDomain}/share/${encodeURIComponent(filename)}?signature=${signature}&expires=${expirationTime}&download=true`,
-      expires_at: expirationDate.toISOString(),
-      expires_in_hours: Math.round(actualExpiresIn / 3600)
-    };
-  }
-  
   return shareUrls;
 }
 
-async function handleShareRequest(request: Request, env: Env): Promise<Response> {
+async function handleShareRequest(request: Request, env: Env, bucketConfig: BucketConfig): Promise<Response> {
   try {
     const body = await request.json() as { 
       filename: string; 
       expires_in?: number; // 有效期（秒），如果不指定则使用环境变量配置
-      public?: boolean;    // 是否生成公开链接
     };
     
     const defaultExpiresIn = getShareLinkExpiresIn(env);
-    const { filename, expires_in = defaultExpiresIn, public: usePublicAccess = false } = body;
+    const { filename, expires_in = defaultExpiresIn } = body;
     
-    console.log(`📋 Share request: filename=${filename}, expires_in=${expires_in}s (${expires_in / 3600}h), public=${usePublicAccess}`);
+    console.log(`📋 Share request: filename=${filename}, expires_in=${expires_in}s (${expires_in / 3600}h), bucket_public=${bucketConfig.public}`);
     
     if (!filename) {
       return new Response(JSON.stringify({
@@ -994,7 +1257,21 @@ async function handleShareRequest(request: Request, env: Env): Promise<Response>
     }
     
     // 检查文件是否存在
-    const object = await env.bucket.get(filename);
+    const bucket = getBucketInstance(bucketConfig, env);
+    if (!bucket) {
+      return new Response(JSON.stringify({
+        error: 'Bucket Not Available',
+        message: 'The specified bucket is not available'
+      }), {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+    
+    const object = await bucket.get(filename);
     if (!object) {
       return new Response(JSON.stringify({
         error: 'File not found',
@@ -1009,43 +1286,8 @@ async function handleShareRequest(request: Request, env: Env): Promise<Response>
       });
     }
     
-    const workerDomain = new URL(request.url).origin;
-    const expirationTime = Date.now() + (expires_in * 1000);
-    const expirationDate = new Date(expirationTime);
-    
-    // 生成分享链接
-    const shareUrls: any = {
-      // 受保护的 Worker API 链接（需要 Bearer Token）
-      protected: {
-        view: `${workerDomain}/api/buckets/bucket/${encodeURIComponent(filename)}`,
-        download: `${workerDomain}/api/buckets/bucket/${encodeURIComponent(filename)}?download=true`
-      },
-      
-      // 文件信息
-      file: {
-        name: filename,
-        size: object.size,
-        lastModified: object.uploaded.toISOString(),
-        contentType: object.httpMetadata?.contentType || 'application/octet-stream'
-      }
-    };
-    
-    // 根据配置决定公开访问方式
-    if (env.R2_CUSTOM_DOMAIN && usePublicAccess) {
-      // 如果配置了 R2 自定义域名，直接返回公开链接
-      shareUrls.public = {
-        view: `https://${env.R2_CUSTOM_DOMAIN}/${encodeURIComponent(filename)}`
-      };
-    } else {
-      // 生成带签名的临时访问链接
-      const signature = await generateSignature(filename, expirationTime.toString(), env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F');
-      shareUrls.signed = {
-        view: `${workerDomain}/share/${encodeURIComponent(filename)}?signature=${signature}&expires=${expirationTime}`,
-        download: `${workerDomain}/share/${encodeURIComponent(filename)}?signature=${signature}&expires=${expirationTime}&download=true`,
-        expires_at: expirationDate.toISOString(),
-        expires_in_hours: Math.round(expires_in / 3600)
-      };
-    }
+    // 使用统一的generateShareUrls函数生成链接
+    const shareUrls = await generateShareUrls(filename, env, request, expires_in, bucketConfig);
     
     return new Response(JSON.stringify({
       success: true,
@@ -1076,7 +1318,7 @@ async function handleShareRequest(request: Request, env: Env): Promise<Response>
   }
 }
 
-async function handleMetadataRequest(request: Request, env: Env): Promise<Response> {
+async function handleMetadataRequest(request: Request, env: Env, bucketConfig: BucketConfig): Promise<Response> {
   try {
     const body = await request.json() as { filename: string };
     const { filename } = body;
@@ -1094,7 +1336,21 @@ async function handleMetadataRequest(request: Request, env: Env): Promise<Respon
       });
     }
 
-    const object = await env.bucket.get(filename);
+    const bucket = getBucketInstance(bucketConfig, env);
+    if (!bucket) {
+      return new Response(JSON.stringify({
+        error: 'Bucket Not Available',
+        message: 'The specified bucket is not available'
+      }), {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+    
+    const object = await bucket.get(filename);
     if (!object) {
       return new Response(JSON.stringify({
         error: 'File not found',
@@ -1142,7 +1398,7 @@ async function handleMetadataRequest(request: Request, env: Env): Promise<Respon
   }
 }
 
-async function handleFileListRequest(request: Request, env: Env): Promise<Response> {
+async function handleFileListRequest(request: Request, env: Env, bucketConfig: BucketConfig): Promise<Response> {
   try {
     const url = new URL(request.url);
     
@@ -1150,7 +1406,21 @@ async function handleFileListRequest(request: Request, env: Env): Promise<Respon
     const prefix = url.searchParams.get('prefix') || '';
     const limit = parseInt(url.searchParams.get('limit') || '100');
     
-    const objects = await env.bucket.list({
+    const bucket = getBucketInstance(bucketConfig, env);
+    if (!bucket) {
+      return new Response(JSON.stringify({
+        error: 'Bucket Not Available',
+        message: 'The specified bucket is not available'
+      }), {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+    
+    const objects = await bucket.list({
       prefix: prefix,
       limit: Math.min(limit, 1000), // 最大1000个文件
     });

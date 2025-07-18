@@ -12,6 +12,16 @@
       "binding": "bucket",
       "bucket_name": "r2-explorer-bucket",
       "preview_bucket_name": "r2-explorer-bucket"
+    },
+    {
+      "binding": "bucket_newspaper", 
+      "bucket_name": "newspaper-assets",
+      "preview_bucket_name": "newspaper-assets"
+    },
+    {
+      "binding": "bucket_aspect",
+      "bucket_name": "aspect-assets",
+      "preview_bucket_name": "aspect-assets"
     }
   ],
   "observability": {
