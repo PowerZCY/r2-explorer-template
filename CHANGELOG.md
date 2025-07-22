@@ -1,5 +1,11 @@
 # r2-explorer-template
 
+## 1.2.0
+
+### Minor Changes
+
+- fix(token): remove useless config
+
 ## 1.1.1
 
 ### Patch Changes

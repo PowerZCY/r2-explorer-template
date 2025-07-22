@@ -23,7 +23,7 @@ function getBucketConfigs(env: Env): Record<string, BucketConfig> {
     'bucket': {
       binding: 'bucket',
       bucketName: 'r2-explorer-bucket',
-      apiToken: env.BUCKET_DEFAULT_API_TOKEN || env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F',
+      apiToken: env.BUCKET_DEFAULT_API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F',
       public: true
     },
     
@@ -944,7 +944,7 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
   }
   
   // 验证签名
-  const expectedSignature = await generateSignature(filename, expires, env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F');
+  const expectedSignature = await generateSignature(filename, expires, env.BUCKET_DEFAULT_API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F');
   if (signature !== expectedSignature) {
     return new Response(JSON.stringify({
       error: 'Invalid signature',
@@ -1197,7 +1197,7 @@ async function generateShareUrls(filename: string, env: Env, request: Request, e
   }
   
   // 生成签名用的token（根据桶配置使用对应的token）
-  const signingToken = bucketConfig?.apiToken || env.API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F';
+  const signingToken = bucketConfig?.apiToken || env.BUCKET_DEFAULT_API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F';
   const signature = await generateSignature(filename, publicExpirationTime.toString(), signingToken);
   
   // 确定桶名称用于URL参数（如果不是默认桶，需要在URL中指定）

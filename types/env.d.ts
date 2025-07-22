@@ -6,9 +6,6 @@ declare namespace Cloudflare {
     ADMIN_USERNAME?: string;
     ADMIN_PASSWORD?: string;
     
-    // 默认API访问令牌 (用于向后兼容)
-    API_TOKEN?: string;
-    
     // 每个桶的独立API访问令牌 (安全隔离)
     // 格式: BUCKET_{桶名称大写}_API_TOKEN
     BUCKET_DEFAULT_API_TOKEN?: string;        // 默认桶(bucket)的API令牌
