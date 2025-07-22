@@ -85,6 +85,32 @@ function getBucketInstance(config: BucketConfig, env: Env): R2Bucket | null {
 }
 
 // ================================
+// 🔀 CORS 助手函数
+// ================================
+
+/**
+ * 获取标准的CORS头部
+ */
+function getCORSHeaders(): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, Content-Length, Accept, Origin, X-Requested-With',
+    'Access-Control-Allow-Credentials': 'false',
+  };
+}
+
+/**
+ * 为响应添加CORS头部
+ */
+function addCORSHeaders(headers: Record<string, string>): Record<string, string> {
+  return {
+    ...headers,
+    ...getCORSHeaders()
+  };
+}
+
+// ================================
 // ⏰ 配置助手函数
 // ================================
 
@@ -139,7 +165,21 @@ export default {
     console.log(`🌐 Incoming request: ${request.method} ${url.pathname}`);
     
     // ================================
-    // 🪣 桶路径解析 (最高优先级)
+    // 🔀 全局 CORS 预检处理 (最高优先级)
+    // ================================
+    if (request.method === 'OPTIONS') {
+      console.log(`🔀 CORS preflight request: ${url.pathname}`);
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...getCORSHeaders(),
+          'Access-Control-Max-Age': '86400',
+        }
+      });
+    }
+    
+    // ================================
+    // 🪣 桶路径解析
     // ================================
     
     const bucketName = parseBucketFromPath(url.pathname);
@@ -160,10 +200,9 @@ export default {
             bucket: bucketName
           }), {
             status: 503,
-            headers: {
+            headers: addCORSHeaders({
               'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            }
+            })
           });
         }
       } else {
@@ -179,10 +218,9 @@ export default {
           hint: `Available buckets: ${availableBuckets.join(', ')}`
         }), {
           status: 404,
-          headers: {
+          headers: addCORSHeaders({
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          }
+          })
         });
       }
     }
@@ -785,14 +823,12 @@ async function handleAPIRoutes(request: Request, env: Env, ctx: ExecutionContext
     return handleFileDownload(request, env, ctx, bucketConfig);
   }
   
-  // CORS 预检请求
+  // CORS 预检请求 (这个已被全局处理，但保留以防万一)
   if (request.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
       headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        ...getCORSHeaders(),
         'Access-Control-Max-Age': '86400',
       }
     });
@@ -809,12 +845,9 @@ async function handleAPIRoutes(request: Request, env: Env, ctx: ExecutionContext
     // 添加 CORS 头
     const response = new Response(r2Response.body, {
       status: r2Response.status,
-      headers: {
+      headers: addCORSHeaders({
         ...Object.fromEntries(r2Response.headers),
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-      }
+      })
     });
     
     return response;
@@ -825,10 +858,9 @@ async function handleAPIRoutes(request: Request, env: Env, ctx: ExecutionContext
       message: 'Failed to process API request'
     }), {
       status: 500,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
 }
@@ -848,12 +880,9 @@ function authenticateAPIRequest(request: Request, env: Env, expectedToken: strin
         required: 'Authorization: Bearer YOUR_TOKEN'
       }), {
         status: 401,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-        }
+        })
       })
     };
   }
@@ -868,10 +897,9 @@ function authenticateAPIRequest(request: Request, env: Env, expectedToken: strin
         message: 'Invalid Bearer token'
       }), {
         status: 401,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       })
     };
   }
@@ -895,10 +923,9 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
       message: 'Missing required parameters'
     }), {
       status: 400,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
   
@@ -910,10 +937,9 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
       message: 'This share link has expired'
     }), {
       status: 410,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
   
@@ -925,10 +951,9 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
       message: 'This share link is invalid or tampered'
     }), {
       status: 403,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
   
@@ -957,10 +982,9 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
         filename
       }), {
         status: 404,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
     
@@ -970,8 +994,7 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
       'Content-Length': object.size.toString(),
       'ETag': object.httpEtag,
       'Last-Modified': object.uploaded.toUTCString(),
-      'Cache-Control': 'private, max-age=3600', // 1小时缓存，因为有有效期
-      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'private, max-age=3600', 
     };
     
     // 如果要求强制下载，添加 Content-Disposition 头
@@ -980,20 +1003,19 @@ async function handleSignedFileAccess(request: Request, env: Env, ctx: Execution
       headers['Content-Disposition'] = `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`;
     }
     
-    // 返回文件内容
+    // 返回文件内容 (添加CORS头)
     return new Response(object.body, {
       status: 200,
-      headers
+      headers: addCORSHeaders(headers)
     });
     
   } catch (error) {
     console.error('Signed file access error:', error);
     return new Response('Internal Server Error', {
       status: 500,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'text/plain',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
 }
@@ -1030,10 +1052,9 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
         message: 'Invalid filename'
       }), {
         status: 400,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
 
@@ -1066,12 +1087,9 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
         share_urls: shareData
       }), {
         status: 201,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-        }
+        })
       });
     } else {
       console.error(`❌ Upload failed: uploadResult is null`);
@@ -1080,10 +1098,9 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
         message: 'Failed to store file in R2 bucket - uploadResult was null'
       }), {
         status: 500,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
     
@@ -1095,10 +1112,9 @@ async function handleFileUpload(request: Request, env: Env, ctx: ExecutionContex
       details: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
 }
@@ -1133,10 +1149,9 @@ async function handleFileDownload(request: Request, env: Env, ctx: ExecutionCont
       status: r2Response.status
     }), {
       status: r2Response.status,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
     
   } catch (error) {
@@ -1146,10 +1161,9 @@ async function handleFileDownload(request: Request, env: Env, ctx: ExecutionCont
       message: 'Failed to download file'
     }), {
       status: 500,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
 }
@@ -1229,10 +1243,9 @@ async function handleShareRequest(request: Request, env: Env, bucketConfig: Buck
         message: 'filename is required'
       }), {
         status: 400,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
     
@@ -1244,10 +1257,9 @@ async function handleShareRequest(request: Request, env: Env, bucketConfig: Buck
         message: 'The specified bucket is not available'
       }), {
         status: 503,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
     
@@ -1259,10 +1271,9 @@ async function handleShareRequest(request: Request, env: Env, bucketConfig: Buck
         filename
       }), {
         status: 404,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
     
@@ -1275,12 +1286,9 @@ async function handleShareRequest(request: Request, env: Env, bucketConfig: Buck
       data: shareUrls
     }), {
       status: 200,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-      }
+      })
     });
     
   } catch (error) {
@@ -1290,10 +1298,9 @@ async function handleShareRequest(request: Request, env: Env, bucketConfig: Buck
       message: 'Failed to generate share URLs'
     }), {
       status: 500,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
 }
@@ -1309,10 +1316,9 @@ async function handleMetadataRequest(request: Request, env: Env, bucketConfig: B
         message: 'filename is required'
       }), {
         status: 400,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
 
@@ -1323,10 +1329,9 @@ async function handleMetadataRequest(request: Request, env: Env, bucketConfig: B
         message: 'The specified bucket is not available'
       }), {
         status: 503,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
     
@@ -1338,10 +1343,9 @@ async function handleMetadataRequest(request: Request, env: Env, bucketConfig: B
         filename
       }), {
         status: 404,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
 
@@ -1358,10 +1362,9 @@ async function handleMetadataRequest(request: Request, env: Env, bucketConfig: B
       }
     }), {
       status: 200,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   } catch (error) {
     console.error('Metadata request error:', error);
@@ -1370,10 +1373,9 @@ async function handleMetadataRequest(request: Request, env: Env, bucketConfig: B
       message: 'Failed to retrieve file metadata'
     }), {
       status: 500,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
 }
@@ -1393,10 +1395,9 @@ async function handleFileListRequest(request: Request, env: Env, bucketConfig: B
         message: 'The specified bucket is not available'
       }), {
         status: 503,
-        headers: {
+        headers: addCORSHeaders({
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
+        })
       });
     }
     
@@ -1425,10 +1426,9 @@ async function handleFileListRequest(request: Request, env: Env, bucketConfig: B
       prefix: prefix || 'all files'
     }), {
       status: 200,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   } catch (error) {
     console.error('File list request error:', error);
@@ -1437,10 +1437,9 @@ async function handleFileListRequest(request: Request, env: Env, bucketConfig: B
       message: 'Failed to retrieve file list'
     }), {
       status: 500,
-      headers: {
+      headers: addCORSHeaders({
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      })
     });
   }
 }

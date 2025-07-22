@@ -1,5 +1,11 @@
 # r2-explorer-template
 
+## 1.1.1
+
+### Patch Changes
+
+- feat(api): support CORS
+
 ## 1.1.0
 
 ### Minor Changes
