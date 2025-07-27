@@ -1513,10 +1513,13 @@ async function handleR2Proxy(request: Request, env: Env, ctx: ExecutionContext):
       });
     }
     
-    console.log(`🌐 Proxying request for: ${filename} to ${r2Domain}`);
+    // 解码URL编码的文件名
+    const decodedFilename = decodeURIComponent(filename);
     
-    // 构建目标R2 URL
-    const targetUrl = `https://${r2Domain}/${encodeURIComponent(filename)}`;
+    console.log(`🌐 Proxying request for: ${decodedFilename} to ${r2Domain}`);
+    
+    // 构建目标R2 URL - 使用解码后的文件名
+    const targetUrl = `https://${r2Domain}/${decodedFilename}`;
     
     // 准备请求头
     const headers = new Headers();
@@ -1576,7 +1579,7 @@ async function handleR2Proxy(request: Request, env: Env, ctx: ExecutionContext):
     
     // 如果要求强制下载，添加Content-Disposition头
     if (forceDownload) {
-      const encodedFilename = encodeURIComponent(filename);
+      const encodedFilename = encodeURIComponent(decodedFilename);
       responseHeaders.set('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
     }
     
@@ -1584,8 +1587,38 @@ async function handleR2Proxy(request: Request, env: Env, ctx: ExecutionContext):
     responseHeaders.set('X-Proxy-Source', 'R2-Explorer-Proxy');
     responseHeaders.set('X-Original-URL', targetUrl);
     
+    // 检查响应状态
+    if (!proxyResponse.ok) {
+      console.log(`❌ R2 returned error status: ${proxyResponse.status}`);
+      return new Response(JSON.stringify({
+        error: 'File Not Found',
+        message: `File not found on R2: ${decodedFilename}`,
+        status: proxyResponse.status
+      }), {
+        status: proxyResponse.status,
+        headers: addCORSHeaders({
+          'Content-Type': 'application/json',
+        })
+      });
+    }
+
+    // 获取响应体
+    const responseBody = proxyResponse.body;
+    if (!responseBody) {
+      console.error('❌ R2 response body is null');
+      return new Response(JSON.stringify({
+        error: 'Empty Response',
+        message: 'R2 returned empty response'
+      }), {
+        status: 500,
+        headers: addCORSHeaders({
+          'Content-Type': 'application/json',
+        })
+      });
+    }
+
     // 返回代理响应
-    return new Response(proxyResponse.body, {
+    return new Response(responseBody, {
       status: proxyResponse.status,
       statusText: proxyResponse.statusText,
       headers: responseHeaders
