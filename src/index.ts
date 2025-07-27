@@ -295,6 +295,13 @@ export default {
     }
     
     // ================================
+    // 🌐 R2公开访问代理 (规避CORS问题)
+    // ================================
+    if (url.pathname.startsWith('/proxy/')) {
+      return handleR2Proxy(request, env, ctx);
+    }
+    
+    // ================================
     // 📤 页面文件上传拦截 (重要!)
     // ================================
     
@@ -1435,6 +1442,161 @@ async function handleFileListRequest(request: Request, env: Env, bucketConfig: B
     return new Response(JSON.stringify({
       error: 'Internal Server Error',
       message: 'Failed to retrieve file list'
+    }), {
+      status: 500,
+      headers: addCORSHeaders({
+        'Content-Type': 'application/json',
+      })
+    });
+  }
+}
+
+// ================================
+// 🌐 R2公开访问代理处理器 (规避CORS问题)
+// ================================
+async function handleR2Proxy(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  try {
+    console.log(`🌐 R2 Proxy request: ${request.method} ${request.url}`);
+    
+    // 检查代理功能是否启用
+    const proxyEnabled = env.R2_PROXY_ENABLED === 'true';
+    if (!proxyEnabled) {
+      console.log(`❌ R2 Proxy is disabled`);
+      return new Response(JSON.stringify({
+        error: 'Proxy Disabled',
+        message: 'R2 proxy functionality is not enabled'
+      }), {
+        status: 503,
+        headers: addCORSHeaders({
+          'Content-Type': 'application/json',
+        })
+      });
+    }
+    
+    // 检查是否需要认证
+    const requireAuth = env.R2_PROXY_REQUIRE_AUTH === 'true';
+    if (requireAuth) {
+      const authResult = authenticateAPIRequest(request, env, env.BUCKET_DEFAULT_API_TOKEN || 'sk-dev-7C021EA0-386B-4908-BFDD-3ACC55B2BD6F');
+      if (!authResult.success) {
+        return authResult.response;
+      }
+    }
+    
+    // 获取固定的R2域名
+    const r2Domain = env.R2_PROXY_DOMAIN;
+    if (!r2Domain) {
+      console.error(`❌ R2_PROXY_DOMAIN not configured`);
+      return new Response(JSON.stringify({
+        error: 'Configuration Error',
+        message: 'R2 proxy domain is not configured'
+      }), {
+        status: 500,
+        headers: addCORSHeaders({
+          'Content-Type': 'application/json',
+        })
+      });
+    }
+    
+    // 解析代理路径: /proxy/{filename}
+    const url = new URL(request.url);
+    const filename = url.pathname.replace('/proxy/', '');
+    
+    if (!filename) {
+      return new Response(JSON.stringify({
+        error: 'Bad Request',
+        message: 'Filename is required in proxy path'
+      }), {
+        status: 400,
+        headers: addCORSHeaders({
+          'Content-Type': 'application/json',
+        })
+      });
+    }
+    
+    console.log(`🌐 Proxying request for: ${filename} to ${r2Domain}`);
+    
+    // 构建目标R2 URL
+    const targetUrl = `https://${r2Domain}/${encodeURIComponent(filename)}`;
+    
+    // 准备请求头
+    const headers = new Headers();
+    
+    // 复制原始请求的重要头部
+    const originalHeaders = request.headers;
+    const allowedHeaders = [
+      'Accept',
+      'Accept-Encoding',
+      'Accept-Language',
+      'Cache-Control',
+      'If-Modified-Since',
+      'If-None-Match',
+      'Range'
+    ];
+    
+    for (const header of allowedHeaders) {
+      const value = originalHeaders.get(header);
+      if (value) {
+        headers.set(header, value);
+      }
+    }
+    
+    // 设置User-Agent（避免被R2拒绝）
+    headers.set('User-Agent', 'R2-Explorer-Proxy/1.0');
+    
+    // 检查是否要求强制下载
+    const forceDownload = url.searchParams.get('download') === 'true';
+    
+    console.log(`🌐 Fetching from: ${targetUrl}`);
+    
+    // 发起代理请求
+    const proxyResponse = await fetch(targetUrl, {
+      method: request.method,
+      headers: headers,
+      body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined
+    });
+    
+    console.log(`🌐 Proxy response status: ${proxyResponse.status}`);
+    
+    // 构建响应头
+    const responseHeaders = new Headers();
+    
+    // 复制原始响应头
+    for (const [key, value] of proxyResponse.headers.entries()) {
+      // 跳过一些不应该转发的头部
+      if (!['server', 'cf-ray', 'cf-cache-status', 'cf-request-id'].includes(key.toLowerCase())) {
+        responseHeaders.set(key, value);
+      }
+    }
+    
+    // 添加CORS头
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    responseHeaders.set('Access-Control-Allow-Headers', 'Accept, Accept-Encoding, Accept-Language, Cache-Control, If-Modified-Since, If-None-Match, Range');
+    responseHeaders.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Content-Type, ETag, Last-Modified');
+    
+    // 如果要求强制下载，添加Content-Disposition头
+    if (forceDownload) {
+      const encodedFilename = encodeURIComponent(filename);
+      responseHeaders.set('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+    }
+    
+    // 添加代理标识
+    responseHeaders.set('X-Proxy-Source', 'R2-Explorer-Proxy');
+    responseHeaders.set('X-Original-URL', targetUrl);
+    
+    // 返回代理响应
+    return new Response(proxyResponse.body, {
+      status: proxyResponse.status,
+      statusText: proxyResponse.statusText,
+      headers: responseHeaders
+    });
+    
+  } catch (error) {
+    console.error('❌ R2 Proxy error:', error);
+    return new Response(JSON.stringify({
+      error: 'Proxy Error',
+      message: 'Failed to proxy request to R2',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: addCORSHeaders({

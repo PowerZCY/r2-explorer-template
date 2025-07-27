@@ -18,6 +18,11 @@ declare namespace Cloudflare {
     // 公开链接有效期配置（小时为单位，默认8760小时=365天）
     PUBLIC_LINK_EXPIRES_HOURS?: string;
     
+    // R2公开访问代理配置
+    R2_PROXY_ENABLED?: string;                // 是否启用R2代理功能 (true/false)
+    R2_PROXY_REQUIRE_AUTH?: string;           // 代理是否需要认证 (true/false)
+    R2_PROXY_DOMAIN?: string;                 // 固定的R2服务域名 (如: r2.d8ger.com)
+    
     // R2存储桶绑定 (由wrangler自动注入)
     bucket: R2Bucket;              // 默认桶: r2-explorer-bucket
     bucket_newspaper: R2Bucket;    // newspaper-assets

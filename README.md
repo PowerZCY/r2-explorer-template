@@ -176,6 +176,19 @@ flowchart LR
         I -->|public: true| J1[Long Expiry<br/>365 days default]
         I -->|public: false| J2[Normal Expiry<br/>24 hours default]
     end
+    
+    subgraph "R2 Proxy Architecture"
+        K[Client Request] --> L{Proxy Enabled?}
+        L -->|Yes| M{Require Auth?}
+        M -->|Yes| N[Bearer Token Check]
+        M -->|No| O[Direct Proxy]
+        N -->|Valid| O
+        N -->|Invalid| P[401 Unauthorized]
+        O --> Q[Fetch from R2 Domain]
+        Q --> R[Add CORS Headers]
+        R --> S[Return Response]
+        L -->|No| T[503 Service Unavailable]
+    end
 ```
 
 ## 🔑 API Reference
@@ -201,6 +214,13 @@ All API endpoints follow the pattern: `/api/buckets/{bucketKey}/{operation}`
 | `POST` | `/api/buckets/{bucket}/share` | Generate share URLs | Bearer Token |
 | `POST` | `/api/buckets/{bucket}/metadata` | Get file metadata | Bearer Token |
 | `GET` | `/api/buckets/{bucket}/{filename}?download=true` | Download file | Bearer Token |
+
+### R2 Proxy Endpoints
+
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| `GET` | `/proxy/{filename}` | Proxy file access | Optional |
+| `GET` | `/proxy/{filename}?download=true` | Proxy file download | Optional |
 
 ### Share URL Structure
 
@@ -282,6 +302,9 @@ curl "https://your-worker.dev/api/buckets/bucket_newspaper/news.jpg" \
 
 # Public access (no token required)
 curl "https://your-worker.dev/share/news.jpg?signature=...&expires=...&bucket=bucket_newspaper"
+
+# R2 Proxy access (CORS-safe)
+curl "https://your-worker.dev/proxy/Reve-Image/1.webp"
 ```
 
 ### TypeScript SDK Integration
@@ -571,6 +594,11 @@ wrangler secret put BUCKET_DEFAULT_API_TOKEN
 wrangler secret put BUCKET_NEWSPAPER_API_TOKEN
 wrangler secret put BUCKET_ASPECT_API_TOKEN
 
+# Set R2 proxy configuration
+wrangler secret put R2_PROXY_ENABLED
+wrangler secret put R2_PROXY_REQUIRE_AUTH
+wrangler secret put R2_PROXY_DOMAIN
+
 # Set public variables
 wrangler vars set ADMIN_USERNAME admin
 wrangler vars set SHARE_LINK_EXPIRES_HOURS 24
@@ -612,6 +640,8 @@ curl "https://your-worker.dev/api/buckets/nonexistent/files" \
 # Should return 404 with available buckets list
 ```
 
----
+## 🙏 Acknowledgments
 
-**Ready to deploy?** Follow the Quick Start guide or deploy with one click!
+- [R2Explorer](https://github.com/cloudflare/r2-explorer) - Web interface foundation
+- [Cloudflare Workers](https://workers.cloudflare.com/) - Serverless platform
+- [Cloudflare R2](https://www.cloudflare.com/products/r2/) - Object storage
