@@ -179,6 +179,13 @@ export default {
     }
     
     // ================================
+    // 🌐 R2公开访问代理 (规避CORS问题) - 最高优先级
+    // ================================
+    if (url.pathname.startsWith('/proxy/')) {
+      return handleR2Proxy(request, env, ctx);
+    }
+    
+    // ================================
     // 🪣 桶路径解析
     // ================================
     
@@ -292,13 +299,6 @@ export default {
     // 带签名的临时访问链接
     if (url.pathname.startsWith('/share/')) {
       return handleSignedFileAccess(request, env, ctx);
-    }
-    
-    // ================================
-    // 🌐 R2公开访问代理 (规避CORS问题)
-    // ================================
-    if (url.pathname.startsWith('/proxy/')) {
-      return handleR2Proxy(request, env, ctx);
     }
     
     // ================================
