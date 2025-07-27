@@ -1,5 +1,11 @@
 # r2-explorer-template
 
+## 1.3.1
+
+### Patch Changes
+
+- fix(cors): support proxy download for R2 CORS Cache issue
+
 ## 1.3.0
 
 ### Minor Changes
